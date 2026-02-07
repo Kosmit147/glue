@@ -15,6 +15,8 @@ import "core:slice"
 import "core:image"
 import "core:image/png"
 import "core:image/jpeg"
+import "core:math"
+import "core:math/linalg"
 
 GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
@@ -497,6 +499,13 @@ glfw_cursor_position_callback :: proc "c" (window_handle: glfw.WindowHandle, xpo
 	s_input.cursor_position = position
 }
 
+Vec2 :: [2]f32
+Vec3 :: [3]f32
+Vec4 :: [4]f32
+
+Mat3 :: matrix[3, 3]f32
+Mat4 :: matrix[4, 4]f32
+
 gl_index :: proc($I: typeid) -> u32 {
 	when I == u8 {
 		return gl.UNSIGNED_BYTE
@@ -620,13 +629,16 @@ set_uniform :: proc(uniform: Uniform($T), value: T) {
 
 	when T == i32 {
 		gl.Uniform1i(location, value)
-	} else when T == [2]f32 {
+	} else when T == Vec2 {
 		gl.Uniform2f(location, value.x, value.y)
-	} else when T == [3]f32 {
+	} else when T == Vec3 {
 		gl.Uniform3f(location, value.x, value.y, value.z)
-	} else when T == [4]f32 {
+	} else when T == Vec4 {
 		gl.Uniform4f(location, value.x, value.y, value.z, value.w)
-	} else when T == matrix[4, 4]f32 {
+	} else when T == Mat3 {
+		value := value
+		gl.UniformMatrix3fv(location, 1, false, raw_data(&value))
+	} else when T == Mat4 {
 		value := value
 		gl.UniformMatrix4fv(location, 1, false, raw_data(&value))
 	} else {
@@ -921,4 +933,35 @@ gl_texture_format_from_channels :: proc(#any_int channels: int) -> u32 {
 
 	assert(false)
 	return gl.NONE
+}
+
+UP   :: Vec3{  0,  1,  0 }
+DOWN :: Vec3{  0, -1,  0 }
+
+Camera :: struct {
+	position: Vec3,
+	yaw: f32,
+	pitch: f32,
+}
+
+Camera_Vectors :: struct {
+	forward: Vec3,
+	right: Vec3,
+	up: Vec3,
+}
+
+camera_vectors :: proc(camera: Camera) -> Camera_Vectors {
+	forward: Vec3
+	forward.x = math.cos(camera.yaw) * math.cos(camera.pitch)
+	forward.y = math.sin(camera.pitch)
+	forward.z = math.sin(camera.yaw) * math.cos(camera.pitch)
+	forward = linalg.normalize(forward)
+	right := linalg.normalize(linalg.cross(forward, UP))
+	up := linalg.normalize(linalg.cross(right, forward))
+
+	return Camera_Vectors {
+		forward = forward,
+		right = right,
+		up = up,
+	}
 }

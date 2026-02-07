@@ -5,10 +5,15 @@ import gl "vendor:OpenGL"
 
 import "core:log"
 import "core:slice"
+import "core:math"
+import "core:math/linalg"
+
+Vec2 :: [2]f32
+Mat4 :: matrix[4, 4]f32
 
 Vertex :: struct {
-	position: [2]f32,
-	uv: [2]f32,
+	position: Vec2,
+	uv: Vec2,
 }
 
 @(rodata)
@@ -24,11 +29,15 @@ VERTEX_SOURCE ::
 layout (location = 0) in vec2 in_position;
 layout (location = 1) in vec2 in_uv;
 
+uniform mat4 projection;
+uniform mat4 view;
+uniform mat4 model;
+
 out vec2 UV;
 
 void main() {
 	UV = in_uv;
-	gl_Position = vec4(in_position, 0.0, 1.0);
+	gl_Position = projection * view * model * vec4(in_position, 0.0, 1.0);
 }
 `
 
@@ -58,11 +67,16 @@ vertices := [4]Vertex{
 @(rodata)
 indices := [6]u32{ 0, 1, 2, 0, 2, 3 }
 
+WINDOW_TITLE  :: "Example"
+WINDOW_WIDTH  :: 1920
+WINDOW_HEIGHT :: 1080
+WINDOW_ASPECT_RATIO :: 1920.0 / 1080.0
+
 main :: proc() {
 	context.logger = log.create_console_logger(.Debug when ODIN_DEBUG else .Info)
 	defer log.destroy_console_logger(context.logger)
 
-	if !glue.create_window(1920, 1080, "Example") do log.panic("Failed to create a window")
+	if !glue.create_window(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE) do log.panic("Failed to create a window")
 	defer glue.destroy_window()
 
 	vertex_array: glue.Vertex_Array
@@ -85,6 +99,15 @@ main :: proc() {
 	if !texture_ok do log.panic("Failed to load the texture.")
 	defer glue.destroy_texture(&texture)
 
+	camera := glue.Camera {
+		position = { 0, 0, 2 },
+		yaw = math.to_radians(f32(-90.0)),
+	}
+
+	model_uniform := glue.get_uniform(shader, "model", Mat4)
+	view_uniform := glue.get_uniform(shader, "view", Mat4)
+	projection_uniform := glue.get_uniform(shader, "projection", Mat4)
+
 	glue.bind_vertex_array(vertex_array)
 	glue.set_vertex_array_format(vertex_array, vertex_format[:])
 	glue.bind_vertex_buffer(vertex_array, vertex_buffer, size_of(Vertex))
@@ -92,9 +115,41 @@ main :: proc() {
 	glue.use_shader(shader)
 	glue.bind_texture(texture, 0)
 
+	gl.ClearColor(0, 0, 0, 1)
+
+	prev_time := glue.time()
+
 	for !glue.window_should_close() {
 		glue.poll_events()
+
+		time := glue.time()
+		dt := f32(time - prev_time)
+		prev_time = time
+
+		camera_vectors := glue.camera_vectors(camera)
+
+		MOVEMENT_SPEED :: 5
+		if glue.key_pressed(.W) do camera.position += camera_vectors.forward * MOVEMENT_SPEED * dt
+		if glue.key_pressed(.S) do camera.position -= camera_vectors.forward * MOVEMENT_SPEED * dt
+		if glue.key_pressed(.A) do camera.position -= camera_vectors.right   * MOVEMENT_SPEED * dt
+		if glue.key_pressed(.D) do camera.position += camera_vectors.right   * MOVEMENT_SPEED * dt
+
+		model: Mat4 = 1
+		view := linalg.matrix4_look_at(eye = camera.position,
+					       centre = camera.position + camera_vectors.forward,
+					       up = camera_vectors.up)
+		projection := linalg.matrix4_perspective(fovy = math.to_radians(f32(45)),
+							 aspect = WINDOW_ASPECT_RATIO,
+							 near = 0.1,
+							 far = 1000)
+
+		glue.set_uniform(model_uniform, model)
+		glue.set_uniform(view_uniform, view)
+		glue.set_uniform(projection_uniform, projection)
+
+		gl.Clear(gl.COLOR_BUFFER_BIT)
 		gl.DrawElements(gl.TRIANGLES, len(indices), glue.gl_index(u32), nil)
+
 		glue.swap_buffers()
 		free_all(context.temp_allocator)
 	}
