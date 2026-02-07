@@ -79,6 +79,9 @@ main :: proc() {
 	if !glue.create_window(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE) do log.panic("Failed to create a window")
 	defer glue.destroy_window()
 
+	glue.set_cursor_enabled(false)
+	glue.set_raw_mouse_motion_enabled(true)
+
 	vertex_array: glue.Vertex_Array
 	glue.create_vertex_array(&vertex_array)
 	defer glue.destroy_vertex_array(&vertex_array)
@@ -125,6 +128,12 @@ main :: proc() {
 		time := glue.time()
 		dt := f32(time - prev_time)
 		prev_time = time
+
+		LOOK_SPEED :: 1
+		cursor_position_delta := linalg.array_cast(glue.cursor_position_delta(), f32)
+		camera.yaw += cursor_position_delta.x * LOOK_SPEED * 0.001
+		camera.pitch += -cursor_position_delta.y * LOOK_SPEED * 0.001
+		camera.pitch = clamp(camera.pitch, math.to_radians(f32(-89)), math.to_radians(f32(89)))
 
 		camera_vectors := glue.camera_vectors(camera)
 

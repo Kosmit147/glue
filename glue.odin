@@ -70,6 +70,8 @@ create_window :: proc(width, height: i32,
 
 	gl.Viewport(0, 0, glfw.GetFramebufferSize(s_window.handle))
 
+	init_input()
+
 	ok = true
 	return
 }
@@ -456,6 +458,12 @@ Input :: struct {
 
 @(private="file")
 s_input: Input
+
+@(private="file")
+init_input :: proc() {
+	x, y := glfw.GetCursorPos(s_window.handle)
+	s_input.cursor_position = { x, y }
+}
 
 @(private="file")
 input_new_frame :: proc() {
