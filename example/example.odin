@@ -125,6 +125,13 @@ main :: proc() {
 	for !glue.window_should_close() {
 		glue.poll_events()
 
+		for event in glue.pop_event() {
+			#partial switch event in event {
+			case glue.Key_Pressed_Event:
+				if event.key == .Escape do glue.close_window()
+			}
+		}
+
 		time := glue.time()
 		dt := f32(time - prev_time)
 		prev_time = time

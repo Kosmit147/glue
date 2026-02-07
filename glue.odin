@@ -7,6 +7,7 @@ import gl "vendor:OpenGL"
 
 import "core:bytes"
 import "core:c"
+import "core:container/queue"
 import "core:fmt"
 import "core:path/filepath"
 import "core:os"
@@ -21,6 +22,9 @@ import "core:math/linalg"
 GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
 
+@(private="file")
+s_context: runtime.Context
+
 Window :: struct {
 	handle: glfw.WindowHandle,
 	cursor_enabled: bool,
@@ -30,9 +34,24 @@ Window :: struct {
 @(private="file")
 s_window: Window
 
+@(private="file")
+s_event_queue: queue.Queue(Event)
+
+Event :: union #no_nil {
+	Key_Pressed_Event,
+	Key_Released_Event,
+	Mouse_Button_Pressed_Event,
+	Mouse_Button_Released_Event,
+}
+
 create_window :: proc(width, height: i32,
 		      title: cstring,
 		      debug_context := ODIN_DEBUG) -> (ok := false) {
+	s_context = context
+
+	queue.init(&s_event_queue)
+	defer if !ok do queue.destroy(&s_event_queue)
+
 	glfw.SetErrorCallback(glfw_error_callback)
 
 	if !glfw.Init() do return
@@ -80,6 +99,7 @@ destroy_window :: proc() {
 	glfw.DestroyWindow(s_window.handle)
 	glfw.Terminate()
 	s_window.handle = nil
+	queue.destroy(&s_event_queue)
 }
 
 window_handle :: proc() -> glfw.WindowHandle {
@@ -101,6 +121,15 @@ poll_events :: proc() {
 
 swap_buffers :: proc() {
 	glfw.SwapBuffers(s_window.handle)
+}
+
+pop_event :: proc() -> (Event, bool) {
+	return queue.pop_front_safe(&s_event_queue)
+}
+
+@(private="file")
+push_event :: proc(event: Event) {
+	queue.push_back(&s_event_queue, event)
 }
 
 time :: proc() -> f64 {
@@ -128,7 +157,7 @@ set_raw_mouse_motion_enabled :: proc(enabled: bool) {
 
 @(private="file")
 glfw_error_callback :: proc "c" (error: i32, description: cstring) {
-	context = runtime.default_context()
+	context = s_context
 	fmt.printfln("GLFW Error %v: %v", error, description)
 }
 
@@ -142,7 +171,7 @@ gl_debug_message_callback :: proc "c" (source, type, id, severity: u32,
 				       length: i32,
 				       message: cstring,
 				       user_ptr: rawptr) {
-	context = runtime.default_context()
+	context = s_context
 	switch severity {
 	case gl.DEBUG_SEVERITY_NOTIFICATION: fmt.printfln("OpenGL Notification: %v", message)
 	case gl.DEBUG_SEVERITY_LOW:          fmt.printfln("OpenGL Warning: %v", message)
@@ -486,18 +515,46 @@ cursor_position_delta :: proc() -> [2]f64 {
 	return s_input.cursor_position_delta
 }
 
+Key_Pressed_Event :: struct {
+	key: Key,
+}
+
+Key_Released_Event :: struct {
+	key: Key,
+}
+
 @(private="file")
 glfw_key_callback :: proc "c" (window_handle: glfw.WindowHandle, key, scancode, action, mods: i32) {
+	context = s_context
 	key := map_glfw_key(key)
-	if action == glfw.PRESS do s_input.pressed_keys += { key }
-	else if action == glfw.RELEASE do s_input.pressed_keys -= { key }
+	if action == glfw.PRESS {
+		s_input.pressed_keys += { key }
+		push_event(Key_Pressed_Event{ key })
+	} else if action == glfw.RELEASE {
+		s_input.pressed_keys -= { key }
+		push_event(Key_Released_Event{ key })
+	}
+}
+
+Mouse_Button_Pressed_Event :: struct {
+	button: Mouse_Button,
+}
+
+Mouse_Button_Released_Event :: struct {
+	button: Mouse_Button,
 }
 
 @(private="file")
 glfw_mouse_button_callback :: proc "c" (window_handle: glfw.WindowHandle, button, action, mods: i32) {
+	context = s_context
 	button := map_glfw_mouse_button(button)
-	if action == glfw.PRESS do s_input.pressed_mouse_buttons += { button }
-	else if action == glfw.RELEASE do s_input.pressed_mouse_buttons -= { button }
+	if action == glfw.PRESS {
+		s_input.pressed_mouse_buttons += { button }
+		push_event(Mouse_Button_Pressed_Event{ button })
+	} else if action == glfw.RELEASE {
+		s_input.pressed_mouse_buttons -= { button }
+		push_event(Mouse_Button_Released_Event{ button })
+	}
 }
 
 @(private="file")
