@@ -8,7 +8,7 @@ import gl "vendor:OpenGL"
 import "core:bytes"
 import "core:c"
 import "core:container/queue"
-import "core:fmt"
+import "core:log"
 import "core:path/filepath"
 import "core:os"
 import "core:strings"
@@ -79,13 +79,12 @@ create_window :: proc(width, height: i32,
 	if debug_context {
 		gl.Enable(gl.DEBUG_OUTPUT)
 		gl.Enable(gl.DEBUG_OUTPUT_SYNCHRONOUS)
-		gl.DebugMessageCallback(gl_debug_message_callback, nil)
 	}
 
-	fmt.printfln("Initialized OpenGL Context")
-	fmt.printfln("Vendor: %v", gl.GetString(gl.VENDOR))
-	fmt.printfln("Renderer: %v", gl.GetString(gl.RENDERER))
-	fmt.printfln("Version: %v", gl.GetString(gl.VERSION))
+	log.infof("Initialized OpenGL Context")
+	log.infof("Vendor: %v", gl.GetString(gl.VENDOR))
+	log.infof("Renderer: %v", gl.GetString(gl.RENDERER))
+	log.infof("Version: %v", gl.GetString(gl.VERSION))
 
 	gl.Viewport(0, 0, glfw.GetFramebufferSize(s_window.handle))
 
@@ -158,26 +157,12 @@ set_raw_mouse_motion_enabled :: proc(enabled: bool) {
 @(private="file")
 glfw_error_callback :: proc "c" (error: i32, description: cstring) {
 	context = s_context
-	fmt.printfln("GLFW Error %v: %v", error, description)
+	log.errorf("GLFW Error %v: %v", error, description)
 }
 
 @(private="file")
 glfw_framebuffer_size_callback :: proc "c" (window_handle: glfw.WindowHandle, width, height: i32) {
 	gl.Viewport(0, 0, width, height)
-}
-
-@(private="file")
-gl_debug_message_callback :: proc "c" (source, type, id, severity: u32,
-				       length: i32,
-				       message: cstring,
-				       user_ptr: rawptr) {
-	context = s_context
-	switch severity {
-	case gl.DEBUG_SEVERITY_NOTIFICATION: fmt.printfln("OpenGL Notification: %v", message)
-	case gl.DEBUG_SEVERITY_LOW:          fmt.printfln("OpenGL Warning: %v", message)
-	case gl.DEBUG_SEVERITY_MEDIUM:       fmt.printfln("OpenGL Warning: %v", message)
-	case gl.DEBUG_SEVERITY_HIGH:         fmt.printfln("OpenGL Error: %v", message)
-	}
 }
 
 Key :: enum u8 {
@@ -640,7 +625,7 @@ create_sub_shader :: proc(shader_source: string, shader_type: u32) -> (shader: u
 		info_log := string(info_log_buffer)
 		info_log = strings.trim_null(info_log)
 
-		fmt.printfln("Failed to compile %v shader: %v", shader_type_string(shader_type), info_log)
+		log.errorf("Failed to compile %v shader: %v", shader_type_string(shader_type), info_log)
 		gl.DeleteShader(shader)
 		return
 	}
@@ -666,7 +651,7 @@ link_shader_program :: proc(vertex_shader, fragment_shader: u32) -> (program: u3
 		info_log := string(info_log_buffer)
 		info_log = strings.trim_null(info_log)
 
-		fmt.printfln("Failed to link shader: %v", info_log)
+		log.errorf("Failed to link shader: %v", info_log)
 		gl.DeleteProgram(program)
 		return
 	}
@@ -684,13 +669,13 @@ Uniform :: struct($T: typeid) {
 
 get_uniform :: proc(shader: Shader, uniform: cstring, $T: typeid) -> (Uniform(T), bool) #optional_ok {
 	location := gl.GetUniformLocation(shader.id, uniform)
-	when ODIN_DEBUG { if location == -1 do fmt.printfln("Warning: Uniform \"%v\" does not exist!", uniform) }
+	when ODIN_DEBUG { if location == -1 do log.warnf("Uniform \"%v\" does not exist!", uniform) }
 	return Uniform(T) { location }, location != -1
 }
 
 set_uniform :: proc(uniform: Uniform($T), value: T) {
 	location := uniform.location
-	when ODIN_DEBUG { if location == -1 do fmt.printfln("Warning: No uniform at location %v.", location) }
+	when ODIN_DEBUG { if location == -1 do log.warnf("No uniform at location %v.", location) }
 
 	when T == i32 {
 		gl.Uniform1i(location, value)
@@ -939,12 +924,16 @@ create_texture_from_png_in_memory :: proc(png_file_data: []byte,
 												ok := false) {
 	img, error := image.load(png_file_data, {}, context.temp_allocator)
 	if error != nil {
-		fmt.printfln("Failed to load image from png file in memory: %v", error)
+		log.errorf("Failed to load image from png file in memory: %v", error)
 		return
 	}
 	defer image.destroy(img, context.temp_allocator)
 
-	texture = create_texture(u32(img.width), u32(img.height), img.channels, bytes.buffer_to_bytes(&img.pixels))
+	texture = create_texture(u32(img.width),
+				 u32(img.height),
+				 img.channels,
+				 bytes.buffer_to_bytes(&img.pixels),
+				 texture_parameters)
 	ok = true
 	return
 }
@@ -954,7 +943,7 @@ create_texture_from_png_file :: proc(path: string,
 											   ok := false) {
 	file_data := os.read_entire_file(path, context.temp_allocator) or_return
 	assert(strings.to_lower(filepath.ext(path), context.temp_allocator) == ".png", "expected a png file")
-	return create_texture_from_png_in_memory(file_data)
+	return create_texture_from_png_in_memory(file_data, texture_parameters)
 }
 
 create_texture_from_jpeg_in_memory :: proc(jpeg_file_data: []byte,
@@ -962,12 +951,16 @@ create_texture_from_jpeg_in_memory :: proc(jpeg_file_data: []byte,
 												 ok := false) {
 	img, error := image.load(jpeg_file_data, {}, context.temp_allocator)
 	if error != nil {
-		fmt.printfln("Failed to load image from jpeg file in memory: %v", error)
+		log.errorf("Failed to load image from jpeg file in memory: %v", error)
 		return
 	}
 	defer image.destroy(img, context.temp_allocator)
 
-	texture = create_texture(u32(img.width), u32(img.height), img.channels, bytes.buffer_to_bytes(&img.pixels))
+	texture = create_texture(u32(img.width),
+				 u32(img.height),
+				 img.channels,
+				 bytes.buffer_to_bytes(&img.pixels),
+				 texture_parameters)
 	ok = true
 	return
 }
@@ -978,7 +971,7 @@ create_texture_from_jpeg_file :: proc(path: string,
 	file_data := os.read_entire_file(path, context.temp_allocator) or_return
 	extension := strings.to_lower(filepath.ext(path), context.temp_allocator)
 	assert(extension == ".jpg" || extension == ".jpeg", "expected a jpeg file")
-	return create_texture_from_jpeg_in_memory(file_data)
+	return create_texture_from_jpeg_in_memory(file_data, texture_parameters)
 }
 
 destroy_texture :: proc(texture: ^Texture) {
