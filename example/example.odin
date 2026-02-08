@@ -94,7 +94,7 @@ main :: proc() {
 	glue.create_static_gl_buffer_with_data(&index_buffer, slice.to_bytes(indices[:]))
 	defer glue.destroy_gl_buffer(&index_buffer)
 
-	shader, shader_ok := glue.create_shader(VERTEX_SOURCE, FRAGMENT_SOURCE)
+	shader, shader_ok := glue.create_simple_shader(VERTEX_SOURCE, FRAGMENT_SOURCE)
 	if !shader_ok do log.panic("Failed to compile the shader.")
 	defer glue.destroy_shader(shader)
 

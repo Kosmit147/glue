@@ -587,7 +587,7 @@ Shader :: struct {
 	id: u32,
 }
 
-create_shader :: proc(vertex_source, fragment_source: string) -> (shader: Shader, ok := false) {
+create_simple_shader :: proc(vertex_source, fragment_source: string) -> (shader: Shader, ok := false) {
 	vertex_shader := create_sub_shader(vertex_source, gl.VERTEX_SHADER) or_return
 	defer gl.DeleteShader(vertex_shader)
 	fragment_shader := create_sub_shader(fragment_source, gl.FRAGMENT_SHADER) or_return
@@ -598,10 +598,10 @@ create_shader :: proc(vertex_source, fragment_source: string) -> (shader: Shader
 	return
 }
 
-create_shader_from_files :: proc(vertex_path, fragment_path: string) -> (shader: Shader, ok := false) {
+create_simple_shader_from_files :: proc(vertex_path, fragment_path: string) -> (shader: Shader, ok := false) {
 	vertex_source := cast(string)os.read_entire_file(vertex_path, context.temp_allocator) or_return
 	fragment_source := cast(string)os.read_entire_file(fragment_path, context.temp_allocator) or_return
-	return create_shader(vertex_source, fragment_source)
+	return create_simple_shader(vertex_source, fragment_source)
 }
 
 destroy_shader :: proc(shader: Shader) {
@@ -885,6 +885,7 @@ Texture_Parameters :: struct {
 	wrap_t: i32,
 	min_filter: i32,
 	mag_filter: i32,
+	internal_format: u32,
 }
 
 DEFAULT_TEXTURE_PARAMETERS :: Texture_Parameters {
@@ -892,6 +893,7 @@ DEFAULT_TEXTURE_PARAMETERS :: Texture_Parameters {
 	wrap_t = gl.REPEAT,
 	min_filter = gl.LINEAR_MIPMAP_LINEAR,
 	mag_filter = gl.LINEAR,
+	internal_format = gl.RGBA8,
 }
 
 Texture :: struct {
@@ -914,7 +916,7 @@ create_texture :: proc(width, height: u32,
 
 	gl.TextureStorage2D(texture.id,
 			    levels = 1,
-			    internalformat = gl.RGBA8,
+			    internalformat = texture_parameters.internal_format,
 			    width = i32(width),
 			    height = i32(height))
 
