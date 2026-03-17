@@ -572,21 +572,67 @@ Shader :: struct {
 	id: u32,
 }
 
-create_simple_shader :: proc(vertex_source, fragment_source: string) -> (shader: Shader, ok := false) {
+create_shader :: proc(vertex_source, fragment_source: string,
+		      tess_control_source := "",
+		      tess_evaluation_source := "",
+		      geometry_source := "") -> (shader: Shader, ok := false) {
 	vertex_shader := create_sub_shader(vertex_source, gl.VERTEX_SHADER) or_return
 	defer gl.DeleteShader(vertex_shader)
 	fragment_shader := create_sub_shader(fragment_source, gl.FRAGMENT_SHADER) or_return
 	defer gl.DeleteShader(fragment_shader)
-	shader.id = link_shader_program(vertex_shader, fragment_shader) or_return
+
+	tess_control_shader := u32(gl.NONE)
+	tess_evaluation_shader := u32(gl.NONE)
+	geometry_shader := u32(gl.NONE)
+	if tess_control_source != "" {
+		tess_control_shader = create_sub_shader(tess_control_source, gl.TESS_CONTROL_SHADER) or_return
+	}
+	defer gl.DeleteShader(tess_control_shader)
+	if tess_evaluation_source != "" {
+		tess_evaluation_shader = create_sub_shader(tess_evaluation_source, gl.TESS_EVALUATION_SHADER) or_return
+	}
+	defer gl.DeleteShader(tess_evaluation_shader)
+	if geometry_source != "" {
+		geometry_shader = create_sub_shader(geometry_source, gl.GEOMETRY_SHADER) or_return
+	}
+	defer gl.DeleteShader(geometry_shader)
+
+	shader.id = link_shader_program(vertex_shader,
+					fragment_shader,
+					tess_control_shader,
+					tess_evaluation_shader,
+					geometry_shader) or_return
 
 	ok = true
 	return
 }
 
-create_simple_shader_from_files :: proc(vertex_path, fragment_path: string) -> (shader: Shader, ok := false) {
+create_shader_from_files :: proc(vertex_path, fragment_path: string,
+				 tess_control_path := "",
+				 tess_evaluation_path := "",
+				 geometry_path := "") -> (shader: Shader, ok := false) {
 	vertex_source := cast(string)os.read_entire_file(vertex_path, context.temp_allocator) or_return
 	fragment_source := cast(string)os.read_entire_file(fragment_path, context.temp_allocator) or_return
-	return create_simple_shader(vertex_source, fragment_source)
+
+	tess_control_source := ""
+	tess_evaluation_source := ""
+	geometry_source := ""
+
+	if tess_control_path != "" {
+		tess_control_source = cast(string)os.read_entire_file(tess_control_path, context.temp_allocator) or_return
+	}
+	if tess_evaluation_path != "" {
+		tess_evaluation_source = cast(string)os.read_entire_file(tess_evaluation_path, context.temp_allocator) or_return
+	}
+	if geometry_path != "" {
+		geometry_source = cast(string)os.read_entire_file(geometry_path, context.temp_allocator) or_return
+	}
+
+	return create_shader(vertex_source = vertex_source,
+			     fragment_source = fragment_source,
+			     tess_control_source = tess_control_source,
+			     tess_evaluation_source = tess_evaluation_source,
+			     geometry_source = geometry_source)
 }
 
 destroy_shader :: proc(shader: Shader) {
@@ -603,6 +649,10 @@ create_sub_shader :: proc(shader_source: string, shader_type: u32) -> (shader: u
 		switch type {
 		case gl.VERTEX_SHADER: return "vertex"
 		case gl.FRAGMENT_SHADER: return "fragment"
+		case gl.TESS_CONTROL_SHADER: return "tess control"
+		case gl.TESS_EVALUATION_SHADER: return "tess evaluation"
+		case gl.GEOMETRY_SHADER: return "geometry"
+		case gl.COMPUTE_SHADER: return "compute"
 		}
 
 		assert(false)
@@ -635,11 +685,18 @@ create_sub_shader :: proc(shader_source: string, shader_type: u32) -> (shader: u
 }
 
 @(private="file")
-link_shader_program :: proc(vertex_shader, fragment_shader: u32) -> (program: u32, ok := false) {
+link_shader_program :: proc(vertex_shader,
+			    fragment_shader,
+			    tess_control_shader,
+			    tess_evaluation_shader,
+			    geometry_shader: u32) -> (program: u32, ok := false) {
 	program = gl.CreateProgram()
 
 	gl.AttachShader(program, vertex_shader)
 	gl.AttachShader(program, fragment_shader)
+	if tess_control_shader != gl.NONE do gl.AttachShader(program, tess_control_shader)
+	if tess_evaluation_shader != gl.NONE do gl.AttachShader(program, tess_evaluation_shader)
+	if geometry_shader != gl.NONE do gl.AttachShader(program, geometry_shader)
 	gl.LinkProgram(program)
 	is_linked: i32
 
@@ -658,6 +715,9 @@ link_shader_program :: proc(vertex_shader, fragment_shader: u32) -> (program: u3
 
 	gl.DetachShader(program, vertex_shader)
 	gl.DetachShader(program, fragment_shader)
+	if tess_control_shader != gl.NONE do gl.DetachShader(program, tess_control_shader)
+	if tess_evaluation_shader != gl.NONE do gl.DetachShader(program, tess_evaluation_shader)
+	if geometry_shader != gl.NONE do gl.DetachShader(program, geometry_shader)
 
 	ok = true
 	return
@@ -1048,7 +1108,7 @@ create_mesh :: proc(mesh: ^Mesh,
 	upload_static_gl_buffer_data(mesh.buffer, slice.to_bytes(vertices[:]), vertex_data_offset)
 	upload_static_gl_buffer_data(mesh.buffer, slice.to_bytes(indices[:]), index_data_offset)
 
-	mesh.vertex_count = cast(u32)len(indices)
+	mesh.vertex_count = cast(u32)len(indices) if indices != nil else u32(slice.size(vertices[:])) / vertex_stride
 	mesh.index_type = index_type
 	mesh.index_data_offset = cast(u32)index_data_offset
 
