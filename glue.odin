@@ -19,6 +19,9 @@ import "core:image/jpeg"
 import "core:math"
 import "core:math/linalg"
 
+_ :: png
+_ :: jpeg
+
 GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
 
@@ -611,22 +614,26 @@ create_shader_from_files :: proc(vertex_path, fragment_path: string,
 				 tess_control_path := "",
 				 tess_evaluation_path := "",
 				 geometry_path := "") -> (shader: Shader, ok := false) {
-	vertex_source := cast(string)os.read_entire_file(vertex_path, context.temp_allocator) or_return
-	fragment_source := cast(string)os.read_entire_file(fragment_path, context.temp_allocator) or_return
+	read_shader_source :: proc(shader_type: string, path: string) -> (source: string, ok := false) {
+		file_data, error := os.read_entire_file(path, context.temp_allocator)
+		if error != nil {
+			log.errorf("Failed to read %v shader source from file `%v`: %v", shader_type, path, error)
+			return
+		}
+		source = cast(string)file_data
+		return
+	}
+
+	vertex_source := read_shader_source("vertex", vertex_path) or_return
+	fragment_source := read_shader_source("fragment", fragment_path) or_return
 
 	tess_control_source := ""
 	tess_evaluation_source := ""
 	geometry_source := ""
 
-	if tess_control_path != "" {
-		tess_control_source = cast(string)os.read_entire_file(tess_control_path, context.temp_allocator) or_return
-	}
-	if tess_evaluation_path != "" {
-		tess_evaluation_source = cast(string)os.read_entire_file(tess_evaluation_path, context.temp_allocator) or_return
-	}
-	if geometry_path != "" {
-		geometry_source = cast(string)os.read_entire_file(geometry_path, context.temp_allocator) or_return
-	}
+	if tess_control_path != "" do tess_control_source = read_shader_source("tess control", tess_control_path) or_return
+	if tess_evaluation_path != "" do tess_evaluation_source = read_shader_source("tess evaluation", tess_evaluation_path) or_return
+	if geometry_path != "" do geometry_source = read_shader_source("geometry", geometry_path) or_return
 
 	return create_shader(vertex_source = vertex_source,
 			     fragment_source = fragment_source,
@@ -665,9 +672,9 @@ create_sub_shader :: proc(shader_source: string, shader_type: u32) -> (shader: u
 	shader = gl.CreateShader(shader_type)
 	gl.ShaderSource(shader, 1, raw_data(sources_array[:]), raw_data(lengths_array[:]))
 	gl.CompileShader(shader)
-	is_compiled: i32
 
-	if gl.GetShaderiv(shader, gl.COMPILE_STATUS, &is_compiled); is_compiled == gl.FALSE {
+	is_compiled: i32
+	if gl.GetShaderiv(shader, gl.COMPILE_STATUS, &is_compiled); is_compiled == i32(gl.FALSE) {
 		info_log_length: i32
 		gl.GetShaderiv(shader, gl.INFO_LOG_LENGTH, &info_log_length)
 		info_log_buffer := make([]byte, info_log_length, context.temp_allocator)
@@ -698,9 +705,9 @@ link_shader_program :: proc(vertex_shader,
 	if tess_evaluation_shader != gl.NONE do gl.AttachShader(program, tess_evaluation_shader)
 	if geometry_shader != gl.NONE do gl.AttachShader(program, geometry_shader)
 	gl.LinkProgram(program)
-	is_linked: i32
 
-	if gl.GetProgramiv(program, gl.LINK_STATUS, &is_linked); is_linked == gl.FALSE {
+	is_linked: i32
+	if gl.GetProgramiv(program, gl.LINK_STATUS, &is_linked); is_linked == i32(gl.FALSE) {
 		info_log_length: i32
 		gl.GetProgramiv(program, gl.INFO_LOG_LENGTH, &info_log_length)
 		info_log_buffer := make([]byte, info_log_length, context.temp_allocator)
@@ -1001,7 +1008,11 @@ create_texture_from_png_in_memory :: proc(png_file_data: []byte,
 create_texture_from_png_file :: proc(path: string,
 				     texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
 											   ok := false) {
-	file_data := os.read_entire_file(path, context.temp_allocator) or_return
+	file_data, file_error := os.read_entire_file(path, context.temp_allocator)
+	if file_error != nil {
+		log.errorf("Failed to load image from png file `%v`: %v", path, file_error)
+		return
+	}
 	assert(strings.to_lower(filepath.ext(path), context.temp_allocator) == ".png", "expected a png file")
 	return create_texture_from_png_in_memory(file_data, texture_parameters)
 }
@@ -1028,7 +1039,11 @@ create_texture_from_jpeg_in_memory :: proc(jpeg_file_data: []byte,
 create_texture_from_jpeg_file :: proc(path: string,
 				      texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
 											    ok := false) {
-	file_data := os.read_entire_file(path, context.temp_allocator) or_return
+	file_data, file_error := os.read_entire_file(path, context.temp_allocator)
+	if file_error != nil {
+		log.errorf("Failed to load image from jpeg file `%v`: %v", path, file_error)
+		return
+	}
 	extension := strings.to_lower(filepath.ext(path), context.temp_allocator)
 	assert(extension == ".jpg" || extension == ".jpeg", "expected a jpeg file")
 	return create_texture_from_jpeg_in_memory(file_data, texture_parameters)
