@@ -4,6 +4,9 @@ import "base:runtime"
 
 import "vendor:glfw"
 import gl "vendor:OpenGL"
+import "vendor/imgui"
+import "vendor/imgui/imgui_impl_glfw"
+import "vendor/imgui/imgui_impl_opengl3"
 
 import "core:bytes"
 import "core:c"
@@ -24,6 +27,7 @@ _ :: jpeg
 
 GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
+IMGUI_FONT_SCALE :: 1.5
 
 @(private="file")
 s_context: runtime.Context
@@ -47,9 +51,9 @@ Event :: union #no_nil {
 	Mouse_Button_Released_Event,
 }
 
-create_window :: proc(width, height: i32,
-		      title: cstring,
-		      debug_context := ODIN_DEBUG) -> (ok := false) {
+init :: proc(width, height: i32,
+	     title: cstring,
+	     debug_context := ODIN_DEBUG) -> (ok := false) {
 	s_context = context
 
 	queue.init(&s_event_queue)
@@ -93,11 +97,15 @@ create_window :: proc(width, height: i32,
 
 	init_input()
 
+	init_imgui()
+	defer if !ok do deinit_imgui()
+
 	ok = true
 	return
 }
 
-destroy_window :: proc() {
+deinit :: proc() {
+	deinit_imgui()
 	glfw.DestroyWindow(s_window.handle)
 	glfw.Terminate()
 	s_window.handle = nil
@@ -116,12 +124,14 @@ close_window :: proc() {
 	glfw.SetWindowShouldClose(s_window.handle, glfw.TRUE)
 }
 
-poll_events :: proc() {
+begin_frame :: proc() {
 	input_new_frame()
 	glfw.PollEvents()
+	imgui_new_frame()
 }
 
-swap_buffers :: proc() {
+end_frame :: proc() {
+	imgui_render()
 	glfw.SwapBuffers(s_window.handle)
 }
 
@@ -145,6 +155,7 @@ cursor_enabled :: proc() -> bool {
 set_cursor_enabled :: proc(enabled: bool) {
 	glfw.SetInputMode(s_window.handle, glfw.CURSOR, glfw.CURSOR_NORMAL if enabled else glfw.CURSOR_DISABLED)
 	s_window.cursor_enabled = enabled
+	input_update_cursor_pos()
 }
 
 raw_mouse_motion_enabled :: proc() -> bool {
@@ -487,6 +498,12 @@ input_new_frame :: proc() {
 	s_input.cursor_position_delta = 0
 }
 
+@(private="file")
+input_update_cursor_pos :: proc() {
+	pos_x, pos_y := glfw.GetCursorPos(s_window.handle)
+	s_input.cursor_position = { pos_x, pos_y }
+}
+
 key_pressed :: proc(key: Key) -> bool {
 	return key in s_input.pressed_keys
 }
@@ -550,6 +567,42 @@ glfw_cursor_position_callback :: proc "c" (window_handle: glfw.WindowHandle, xpo
 	position := [2]f64{ xpos, ypos }
 	s_input.cursor_position_delta += (position - s_input.cursor_position)
 	s_input.cursor_position = position
+}
+
+@(private="file")
+init_imgui :: proc() {
+	imgui.CHECKVERSION()
+	imgui.CreateContext()
+
+	io := imgui.GetIO()
+	io.ConfigFlags += { .DockingEnable, .ViewportsEnable }
+	io.FontGlobalScale = IMGUI_FONT_SCALE
+
+	imgui_impl_glfw.InitForOpenGL(s_window.handle, install_callbacks = true)
+	imgui_impl_opengl3.Init("#version 430 core")
+}
+
+@(private="file")
+deinit_imgui :: proc() {
+	imgui_impl_opengl3.Shutdown()
+	imgui_impl_glfw.Shutdown()
+	imgui.DestroyContext()
+}
+
+@(private="file")
+imgui_new_frame :: proc() {
+	imgui_impl_opengl3.NewFrame()
+	imgui_impl_glfw.NewFrame()
+	imgui.NewFrame()
+}
+
+@(private="file")
+imgui_render :: proc() {
+	imgui.Render()
+	imgui_impl_opengl3.RenderDrawData(imgui.GetDrawData())
+	imgui.UpdatePlatformWindows()
+	imgui.RenderPlatformWindowsDefault()
+	glfw.MakeContextCurrent(s_window.handle)
 }
 
 Vec2 :: [2]f32
@@ -740,24 +793,26 @@ get_uniform :: proc(shader: Shader, uniform: cstring, $T: typeid) -> (Uniform(T)
 	return Uniform(T) { location }, location != -1
 }
 
-set_uniform :: proc(uniform: Uniform($T), value: T) {
+set_uniform :: proc(shader: Shader, uniform: Uniform($T), value: T) {
 	location := uniform.location
 	when ODIN_DEBUG { if location == -1 do log.warnf("No uniform at location %v.", location) }
 
 	when T == i32 {
-		gl.Uniform1i(location, value)
+		gl.ProgramUniform1i(shader.id, location, value)
+	} else when T == f32 {
+		gl.ProgramUniform1f(shader.id, location, value)
 	} else when T == Vec2 {
-		gl.Uniform2f(location, value.x, value.y)
+		gl.ProgramUniform2f(shader.id, location, value.x, value.y)
 	} else when T == Vec3 {
-		gl.Uniform3f(location, value.x, value.y, value.z)
+		gl.ProgramUniform3f(shader.id, location, value.x, value.y, value.z)
 	} else when T == Vec4 {
-		gl.Uniform4f(location, value.x, value.y, value.z, value.w)
+		gl.ProgramUniform4f(shader.id, location, value.x, value.y, value.z, value.w)
 	} else when T == Mat3 {
 		value := value
-		gl.UniformMatrix3fv(location, 1, false, raw_data(&value))
+		gl.ProgramUniformMatrix3fv(shader.id, location, 1, false, raw_data(&value))
 	} else when T == Mat4 {
 		value := value
-		gl.UniformMatrix4fv(location, 1, false, raw_data(&value))
+		gl.ProgramUniformMatrix4fv(shader.id, location, 1, false, raw_data(&value))
 	} else {
  		#panic("Type T not implemented for set_uniform.")
 	}
@@ -1141,3 +1196,11 @@ destroy_mesh :: proc(mesh: ^Mesh) {
 bind_mesh :: proc(mesh: Mesh) {
 	bind_vertex_array(mesh.vertex_array)
 }
+
+WHITE       :: Vec4{ 1, 1, 1, 1 }
+BLACK       :: Vec4{ 0, 0, 0, 1 }
+TRANSPARENT :: Vec4{ 0, 0, 0, 1 }
+
+RED         :: Vec4{ 1, 0, 0, 1 }
+GREEN       :: Vec4{ 0, 1, 0, 1 }
+BLUE        :: Vec4{ 0, 0, 1, 1 }

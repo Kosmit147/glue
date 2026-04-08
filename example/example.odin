@@ -1,6 +1,7 @@
 package example
 
 import glue ".."
+import imgui "../vendor/imgui"
 import gl "vendor:OpenGL"
 
 import "core:log"
@@ -9,6 +10,8 @@ import "core:math"
 import "core:math/linalg"
 
 Vec2 :: [2]f32
+Vec3 :: [3]f32
+Vec4 :: [4]f32
 Mat4 :: matrix[4, 4]f32
 
 Vertex :: struct {
@@ -47,12 +50,13 @@ FRAGMENT_SOURCE ::
 
 in vec2 UV;
 
-out vec4 out_color;
-
+uniform vec4 tint;
 layout (binding = 0) uniform sampler2D texture_0;
 
+out vec4 out_color;
+
 void main() {
-	out_color = texture(texture_0, UV);
+	out_color = texture(texture_0, UV) * tint;
 }
 `
 
@@ -76,8 +80,8 @@ main :: proc() {
 	context.logger = log.create_console_logger(.Debug when ODIN_DEBUG else .Info)
 	defer log.destroy_console_logger(context.logger)
 
-	if !glue.create_window(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE) do log.panic("Failed to create a window")
-	defer glue.destroy_window()
+	if !glue.init(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_TITLE) do log.panic("Failed to create a window")
+	defer glue.deinit()
 
 	glue.set_cursor_enabled(false)
 	glue.set_raw_mouse_motion_enabled(true)
@@ -110,6 +114,7 @@ main :: proc() {
 	model_uniform := glue.get_uniform(shader, "model", Mat4)
 	view_uniform := glue.get_uniform(shader, "view", Mat4)
 	projection_uniform := glue.get_uniform(shader, "projection", Mat4)
+	tint_uniform := glue.get_uniform(shader, "tint", Vec4)
 
 	glue.bind_vertex_array(vertex_array)
 	glue.set_vertex_array_format(vertex_array, vertex_format[:])
@@ -118,17 +123,21 @@ main :: proc() {
 	glue.use_shader(shader)
 	glue.bind_texture(texture, 0)
 
-	gl.ClearColor(0, 0, 0, 1)
+	clear_color := glue.BLACK
+	set_clear_color(clear_color)
+	container_tint := glue.WHITE
+	glue.set_uniform(shader, tint_uniform, container_tint)
 
 	prev_time := glue.time()
 
 	for !glue.window_should_close() {
-		glue.poll_events()
+		glue.begin_frame()
 
 		for event in glue.pop_event() {
 			#partial switch event in event {
 			case glue.Key_Pressed_Event:
 				if event.key == .Escape do glue.close_window()
+				else if event.key == .Left_Control do glue.set_cursor_enabled(!glue.cursor_enabled())
 			}
 		}
 
@@ -136,11 +145,18 @@ main :: proc() {
 		dt := f32(time - prev_time)
 		prev_time = time
 
-		LOOK_SPEED :: 1
-		cursor_position_delta := linalg.array_cast(glue.cursor_position_delta(), f32)
-		camera.yaw += cursor_position_delta.x * LOOK_SPEED * 0.001
-		camera.pitch += -cursor_position_delta.y * LOOK_SPEED * 0.001
-		camera.pitch = clamp(camera.pitch, math.to_radians(f32(-89)), math.to_radians(f32(89)))
+		imgui.Begin("Window")
+		if imgui.ColorEdit4("Clear color", &clear_color) do set_clear_color(clear_color)
+		if imgui.ColorEdit4("Container tint", &container_tint) do glue.set_uniform(shader, tint_uniform, container_tint)
+		imgui.End()
+
+		if !glue.cursor_enabled() {
+			LOOK_SPEED :: 1
+			cursor_position_delta := linalg.array_cast(glue.cursor_position_delta(), f32)
+			camera.yaw += cursor_position_delta.x * LOOK_SPEED * 0.001
+			camera.pitch += -cursor_position_delta.y * LOOK_SPEED * 0.001
+			camera.pitch = clamp(camera.pitch, math.to_radians(f32(-89)), math.to_radians(f32(89)))
+		}
 
 		camera_vectors := glue.camera_vectors(camera)
 
@@ -159,14 +175,18 @@ main :: proc() {
 							 near = 0.1,
 							 far = 1000)
 
-		glue.set_uniform(model_uniform, model)
-		glue.set_uniform(view_uniform, view)
-		glue.set_uniform(projection_uniform, projection)
+		glue.set_uniform(shader, model_uniform, model)
+		glue.set_uniform(shader, view_uniform, view)
+		glue.set_uniform(shader, projection_uniform, projection)
 
 		gl.Clear(gl.COLOR_BUFFER_BIT)
 		gl.DrawElements(gl.TRIANGLES, len(indices), glue.gl_index(u32), nil)
 
-		glue.swap_buffers()
+		glue.end_frame()
 		free_all(context.temp_allocator)
 	}
+}
+
+set_clear_color :: proc(color: Vec4) {
+	gl.ClearColor(color.r, color.g, color.b, color.a)
 }
