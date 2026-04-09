@@ -53,6 +53,7 @@ Event :: union #no_nil {
 
 init :: proc(width, height: i32,
 	     title: cstring,
+	     maximized := false,
 	     debug_context := ODIN_DEBUG) -> (ok := false) {
 	s_context = context
 
@@ -68,6 +69,7 @@ init :: proc(width, height: i32,
 	glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
 	glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
 	glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, c.int(debug_context))
+	glfw.WindowHint(glfw.MAXIMIZED, glfw.TRUE if maximized else glfw.FALSE)
 
 	s_window.handle = glfw.CreateWindow(width, height, title, nil, nil)
 	if s_window.handle == nil do return
