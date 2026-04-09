@@ -21,6 +21,7 @@ import "core:image/png"
 import "core:image/jpeg"
 import "core:math"
 import "core:math/linalg"
+import core_time "core:time"
 
 _ :: png
 _ :: jpeg
@@ -36,6 +37,9 @@ Window :: struct {
 	handle: glfw.WindowHandle,
 	cursor_enabled: bool,
 	raw_mouse_motion_enabled: bool,
+	fps_limit: Maybe(u32),
+	target_frame_time: f64,
+	prev_swap_buffers_time: f64,
 }
 
 @(private="file")
@@ -54,7 +58,9 @@ Event :: union #no_nil {
 init :: proc(width, height: i32,
 	     title: cstring,
 	     maximized := false,
-	     debug_context := ODIN_DEBUG) -> (ok := false) {
+	     vsync := true,
+	     fps_limit: Maybe(u32) = nil,
+	     gl_debug_context := ODIN_DEBUG) -> (ok := false) {
 	s_context = context
 
 	queue.init(&s_event_queue)
@@ -68,7 +74,7 @@ init :: proc(width, height: i32,
 	glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_VERSION_MAJOR)
 	glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
 	glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-	glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, c.int(debug_context))
+	glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, c.int(gl_debug_context))
 	glfw.WindowHint(glfw.MAXIMIZED, glfw.TRUE if maximized else glfw.FALSE)
 
 	s_window.handle = glfw.CreateWindow(width, height, title, nil, nil)
@@ -76,7 +82,10 @@ init :: proc(width, height: i32,
 	defer if !ok do glfw.DestroyWindow(s_window.handle)
 
 	glfw.MakeContextCurrent(s_window.handle)
-	glfw.SwapInterval(1)
+	glfw.SwapInterval(1 if vsync else 0)
+
+	if limit, limit_set := fps_limit.?; limit_set do enable_fps_limit(limit)
+	else do disable_fps_limit()
 
 	glfw.SetFramebufferSizeCallback(s_window.handle, glfw_framebuffer_size_callback)
 	glfw.SetKeyCallback(s_window.handle, glfw_key_callback)
@@ -85,7 +94,7 @@ init :: proc(width, height: i32,
 
 	gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, glfw.gl_set_proc_address)
 
-	if debug_context {
+	if gl_debug_context {
 		gl.Enable(gl.DEBUG_OUTPUT)
 		gl.Enable(gl.DEBUG_OUTPUT_SYNCHRONOUS)
 	}
@@ -134,7 +143,18 @@ begin_frame :: proc() {
 
 end_frame :: proc() {
 	imgui_render()
+	swap_buffers()
+}
+
+@(private="file")
+swap_buffers :: proc() {
 	glfw.SwapBuffers(s_window.handle)
+	current_frame_time := time() - s_window.prev_swap_buffers_time
+	if current_frame_time < s_window.target_frame_time {
+		sleep_time := s_window.target_frame_time - current_frame_time
+		core_time.accurate_sleep(core_time.Duration(sleep_time * f64(core_time.Second)))
+	}
+	s_window.prev_swap_buffers_time = time()
 }
 
 pop_event :: proc() -> (Event, bool) {
@@ -144,6 +164,29 @@ pop_event :: proc() -> (Event, bool) {
 @(private="file")
 push_event :: proc(event: Event) {
 	queue.push_back(&s_event_queue, event)
+}
+
+MIN_FPS_LIMIT :: 1
+
+enable_fps_limit :: proc(limit: u32) {
+	limit := max(limit, MIN_FPS_LIMIT)
+	s_window.fps_limit = limit
+	s_window.target_frame_time = 1.0 / f64(limit)
+}
+
+disable_fps_limit :: proc() {
+	s_window.fps_limit = nil
+	s_window.target_frame_time = 0
+}
+
+@(require_results)
+fps_limit :: proc() -> (u32, bool) {
+	return s_window.fps_limit.?
+}
+
+@(require_results)
+target_frame_time :: proc() -> f64 {
+	return s_window.target_frame_time
 }
 
 @(require_results)
