@@ -74,7 +74,6 @@ indices := [6]u32{ 0, 1, 2, 0, 2, 3 }
 WINDOW_TITLE  :: "Example"
 WINDOW_WIDTH  :: 1920
 WINDOW_HEIGHT :: 1080
-WINDOW_ASPECT_RATIO :: 1920.0 / 1080.0
 
 main :: proc() {
 	context.logger = log.create_console_logger(.Debug when ODIN_DEBUG else .Info)
@@ -171,7 +170,7 @@ main :: proc() {
 					       centre = camera.position + camera_vectors.forward,
 					       up = camera_vectors.up)
 		projection := linalg.matrix4_perspective(fovy = math.to_radians(f32(45)),
-							 aspect = WINDOW_ASPECT_RATIO,
+							 aspect = glue.window_aspect_ratio(),
 							 near = 0.1,
 							 far = 1000)
 

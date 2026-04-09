@@ -146,10 +146,30 @@ push_event :: proc(event: Event) {
 	queue.push_back(&s_event_queue, event)
 }
 
+@(require_results)
+window_size :: proc() -> [2]i32 {
+	x, y := glfw.GetWindowSize(s_window.handle)
+	return { x, y }
+}
+
+@(require_results)
+framebuffer_size :: proc() -> [2]i32 {
+	x, y := glfw.GetFramebufferSize(s_window.handle)
+	return { x, y }
+}
+
+@(require_results)
+window_aspect_ratio :: proc() -> f32 {
+	window_size := linalg.array_cast(window_size(), f32)
+	return window_size.x / window_size.y
+}
+
+@(require_results)
 time :: proc() -> f64 {
 	return glfw.GetTime()
 }
 
+@(require_results)
 cursor_enabled :: proc() -> bool {
 	return s_window.cursor_enabled
 }
@@ -160,6 +180,7 @@ set_cursor_enabled :: proc(enabled: bool) {
 	input_update_cursor_pos()
 }
 
+@(require_results)
 raw_mouse_motion_enabled :: proc() -> bool {
 	return s_window.raw_mouse_motion_enabled
 }
@@ -506,18 +527,22 @@ input_update_cursor_pos :: proc() {
 	s_input.cursor_position = { pos_x, pos_y }
 }
 
+@(require_results)
 key_pressed :: proc(key: Key) -> bool {
 	return key in s_input.pressed_keys
 }
 
+@(require_results)
 mouse_button_pressed :: proc(button: Mouse_Button) -> bool {
 	return button in s_input.pressed_mouse_buttons
 }
 
+@(require_results)
 cursor_position :: proc() -> [2]f64 {
 	return s_input.cursor_position
 }
 
+@(require_results)
 cursor_position_delta :: proc() -> [2]f64 {
 	return s_input.cursor_position_delta
 }
@@ -614,6 +639,7 @@ Vec4 :: [4]f32
 Mat3 :: matrix[3, 3]f32
 Mat4 :: matrix[4, 4]f32
 
+@(require_results)
 gl_index :: proc($I: typeid) -> u32 {
 	when I == u8 {
 		return gl.UNSIGNED_BYTE
@@ -789,6 +815,7 @@ Uniform :: struct($T: typeid) {
 	location: i32,
 }
 
+@(require_results)
 get_uniform :: proc(shader: Shader, uniform: cstring, $T: typeid) -> (Uniform(T), bool) #optional_ok {
 	location := gl.GetUniformLocation(shader.id, uniform)
 	when ODIN_DEBUG { if location == -1 do log.warnf("Uniform \"%v\" does not exist!", uniform) }
@@ -1142,6 +1169,7 @@ Camera_Vectors :: struct {
 	up: Vec3,
 }
 
+@(require_results)
 camera_vectors :: proc(camera: Camera) -> Camera_Vectors {
 	forward: Vec3
 	forward.x = math.cos(camera.yaw) * math.cos(camera.pitch)
