@@ -7,6 +7,7 @@ import gl "vendor:OpenGL"
 import "vendor/imgui"
 import "vendor/imgui/imgui_impl_glfw"
 import "vendor/imgui/imgui_impl_opengl3"
+import tinyobj "vendor/tinyobjloader"
 
 import "core:bytes"
 import "core:c"
@@ -675,13 +676,6 @@ imgui_render :: proc() {
 	glfw.MakeContextCurrent(s_window.handle)
 }
 
-Vec2 :: [2]f32
-Vec3 :: [3]f32
-Vec4 :: [4]f32
-
-Mat3 :: matrix[3, 3]f32
-Mat4 :: matrix[4, 4]f32
-
 @(require_results)
 gl_index :: proc($I: typeid) -> u32 {
 	when I == u8 {
@@ -1229,6 +1223,19 @@ camera_vectors :: proc(camera: Camera) -> Camera_Vectors {
 	}
 }
 
+Mesh_Data :: struct($V: typeid, $I: typeid) {
+	vertex_format: [dynamic; 16]Vertex_Attribute,
+	vertex_stride: u32,
+	index_type: u32,
+	vertices: [dynamic]V,
+	indices: [dynamic]I,
+}
+
+free_mesh_data :: proc(mesh_data: $M/Mesh_Data) {
+	delete(mesh_data.vertices)
+	delete(mesh_data.indices)
+}
+
 Mesh :: struct {
 	vertex_array: Vertex_Array,
 	buffer: Gl_Buffer, // Contains both the vertices and indices.
@@ -1237,19 +1244,18 @@ Mesh :: struct {
 	index_data_offset: u32,
 }
 
-create_mesh :: proc(mesh: ^Mesh,
-		    vertices: []byte,
-		    vertex_stride: u32,
-		    vertex_format: []Vertex_Attribute,
-		    indices: []byte,
-		    index_type: u32) {
+create_mesh_from_vertices_and_indices :: proc(vertices: []byte,
+					      vertex_stride: u32,
+					      vertex_format: []Vertex_Attribute,
+					      indices: []byte, // indices can be nil.
+					      index_type: u32) -> (mesh: Mesh) {
 	vertex_data_offset := 0
 	index_data_offset := slice.size(vertices[:])
 	buffer_size := slice.size(vertices[:]) + slice.size(indices[:])
 
 	create_static_gl_buffer(&mesh.buffer, buffer_size)
-	upload_static_gl_buffer_data(mesh.buffer, slice.to_bytes(vertices[:]), vertex_data_offset)
-	upload_static_gl_buffer_data(mesh.buffer, slice.to_bytes(indices[:]), index_data_offset)
+	upload_static_gl_buffer_data(mesh.buffer, vertices, vertex_data_offset)
+	upload_static_gl_buffer_data(mesh.buffer, indices, index_data_offset)
 
 	mesh.vertex_count = cast(u32)len(indices) if indices != nil else u32(slice.size(vertices[:])) / vertex_stride
 	mesh.index_type = index_type
@@ -1259,6 +1265,115 @@ create_mesh :: proc(mesh: ^Mesh,
 	set_vertex_array_format(mesh.vertex_array, vertex_format)
 	bind_vertex_buffer(mesh.vertex_array, mesh.buffer, i32(vertex_stride))
 	bind_index_buffer(mesh.vertex_array, mesh.buffer)
+	return
+}
+
+create_mesh_from_obj :: proc(path: cstring) -> (mesh: Mesh, ok := false) {
+	mesh_data := load_mesh_from_obj(path, context.temp_allocator) or_return
+	mesh = create_mesh_from_mesh_data(&mesh_data)
+	ok = true
+	return
+}
+
+create_mesh_from_mesh_data :: proc(mesh_data: ^$M/Mesh_Data) -> (mesh: Mesh) {
+	mesh = create_mesh_from_vertices_and_indices(vertices = slice.to_bytes(mesh_data.vertices[:]),
+						     vertex_stride = mesh_data.vertex_stride,
+						     vertex_format = mesh_data.vertex_format[:],
+						     indices = slice.to_bytes(mesh_data.indices[:]),
+						     index_type = mesh_data.index_type)
+	return
+}
+
+create_mesh :: proc{ create_mesh_from_vertices_and_indices, create_mesh_from_obj, create_mesh_from_mesh_data }
+
+load_mesh_from_obj :: proc(path: cstring,
+			   allocator := context.allocator) -> (mesh_data: Mesh_Data(Vertex_3D, u32), ok := false) {
+	file_reader :: proc "c" (ctx: rawptr,
+				 filename: cstring,
+				 is_mtl: c.int,
+				 obj_filename: cstring,
+				 buf: ^[^]c.char,
+				 buf_len: ^c.size_t) {
+		context = s_context
+		data, error := os.read_entire_file(cast(string)obj_filename, context.temp_allocator)
+		if error != nil {
+			log.errorf("Failed to read obj file `%v`: %v", obj_filename, error)
+			buf^ = nil
+			buf_len^ = 0
+			return
+		}
+		buf^ = raw_data(data)
+		buf_len^ = len(data)
+		return
+	}
+
+	attrib: tinyobj.attrib_t
+	shapes_data: [^]tinyobj.shape_t
+	num_shapes: uint
+	materials_data: [^]tinyobj.material_t
+	num_materials: uint
+
+	if tinyobj.parse_obj(attrib = &attrib,
+			     shapes = &shapes_data,
+			     num_shapes = &num_shapes,
+			     materials = &materials_data,
+			     num_materials = &num_materials,
+			     file_name = path,
+			     file_reader = file_reader,
+			     ctx = nil,
+			     flags = tinyobj.FLAG_TRIANGULATE) != tinyobj.SUCCESS {
+		return
+	}
+	defer {
+		tinyobj.attrib_free(&attrib)
+		tinyobj.shapes_free(shapes_data, num_shapes)
+		tinyobj.materials_free(materials_data, num_materials)
+	}
+
+	Mesh_Vertex :: Vertex_3D
+	mesh_vertex_format := vertex_3d_format
+	Mesh_Index :: u32
+
+	append(&mesh_data.vertex_format, ..mesh_vertex_format)
+	mesh_data.vertex_stride = size_of(Mesh_Vertex)
+	mesh_data.index_type = gl_index(Mesh_Index)
+	mesh_data.vertices = make([dynamic]Mesh_Vertex, allocator)
+	mesh_data.indices = make([dynamic]Mesh_Index, allocator)
+	defer if !ok do free_mesh_data(mesh_data)
+
+	num_triangles := attrib.num_face_num_verts
+	model_vertices := attrib.faces[:num_triangles * 3]
+	unique_vertex_indices := make(map[Mesh_Vertex]Mesh_Index, context.temp_allocator)
+	for vertex in model_vertices {
+		vertex := Mesh_Vertex {
+			position = Vec3{
+				attrib.vertices[vertex.v_idx * 3 + 0],
+				attrib.vertices[vertex.v_idx * 3 + 1],
+				attrib.vertices[vertex.v_idx * 3 + 2],
+			},
+			normal = Vec3{
+				attrib.normals[vertex.vn_idx * 3 + 0],
+				attrib.normals[vertex.vn_idx * 3 + 1],
+				attrib.normals[vertex.vn_idx * 3 + 2],
+			},
+			uv = Vec2{
+				attrib.texcoords[vertex.vt_idx * 2 + 0],
+				attrib.texcoords[vertex.vt_idx * 2 + 1],
+			},
+		}
+
+		if vertex_index, vertex_index_ok := unique_vertex_indices[vertex]; vertex_index_ok {
+			append(&mesh_data.indices, vertex_index)
+		} else {
+			vertex_index = cast(Mesh_Index)len(unique_vertex_indices)
+			unique_vertex_indices[vertex] = vertex_index
+			append(&mesh_data.vertices, vertex)
+			append(&mesh_data.indices, vertex_index)
+		}
+	}
+
+	ok = true
+	return
 }
 
 destroy_mesh :: proc(mesh: ^Mesh) {
@@ -1270,9 +1385,23 @@ bind_mesh :: proc(mesh: Mesh) {
 	bind_vertex_array(mesh.vertex_array)
 }
 
+Vec2 :: [2]f32
+Vec3 :: [3]f32
+Vec4 :: [4]f32
+Mat3 :: matrix[3, 3]f32
+Mat4 :: matrix[4, 4]f32
+
+Vertex_3D :: struct {
+	position: Vec3,
+	normal: Vec3,
+	uv: Vec2,
+}
+
+@(rodata) vertex_3d_format := []Vertex_Attribute{ .Float_3, .Float_3, .Float_2 }
+
 WHITE       :: Vec4{ 1, 1, 1, 1 }
 BLACK       :: Vec4{ 0, 0, 0, 1 }
-TRANSPARENT :: Vec4{ 0, 0, 0, 1 }
+TRANSPARENT :: Vec4{ 0, 0, 0, 0 }
 
 RED         :: Vec4{ 1, 0, 0, 1 }
 GREEN       :: Vec4{ 0, 1, 0, 1 }
