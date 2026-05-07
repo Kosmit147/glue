@@ -204,7 +204,7 @@ framebuffer_size :: proc() -> [2]i32 {
 
 @(require_results)
 window_aspect_ratio :: proc() -> f32 {
-	window_size := linalg.array_cast(window_size(), f32)
+	window_size := cast(Vec2)window_size()
 	return window_size.x / window_size.y
 }
 

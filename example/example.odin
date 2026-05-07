@@ -151,7 +151,7 @@ main :: proc() {
 
 		if !glue.cursor_enabled() {
 			LOOK_SPEED :: 1
-			cursor_position_delta := linalg.array_cast(glue.cursor_position_delta(), f32)
+			cursor_position_delta := cast(Vec2)glue.cursor_position_delta()
 			camera.yaw += cursor_position_delta.x * LOOK_SPEED * 0.001
 			camera.pitch += -cursor_position_delta.y * LOOK_SPEED * 0.001
 			camera.pitch = clamp(camera.pitch, math.to_radians(f32(-89)), math.to_radians(f32(89)))
