@@ -166,13 +166,14 @@ main :: proc() {
 		if glue.key_pressed(.D) do camera.position += camera_vectors.right   * MOVEMENT_SPEED * dt
 
 		model: Mat4 = 1
-		view := linalg.matrix4_look_at(eye = camera.position,
-					       centre = camera.position + camera_vectors.forward,
-					       up = camera_vectors.up)
+		view := linalg.matrix4_look_at_from_fru(eye = camera.position,
+												f = camera_vectors.forward,
+												r = camera_vectors.right,
+												u = camera_vectors.up)
 		projection := linalg.matrix4_perspective(fovy = math.to_radians(f32(45)),
-							 aspect = glue.window_aspect_ratio(),
-							 near = 0.1,
-							 far = 1000)
+												 aspect = glue.window_aspect_ratio(),
+												 near = 0.1,
+												 far = 1000)
 
 		glue.set_uniform(shader, model_uniform, model)
 		glue.set_uniform(shader, view_uniform, view)

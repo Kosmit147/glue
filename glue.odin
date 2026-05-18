@@ -57,11 +57,11 @@ Event :: union #no_nil {
 }
 
 init :: proc(width, height: i32,
-	     title: cstring,
-	     maximized := false,
-	     vsync := true,
-	     fps_limit: Maybe(u32) = nil,
-	     gl_debug_context := ODIN_DEBUG) -> (ok := false) {
+			 title: cstring,
+			 maximized := false,
+			 vsync := true,
+			 fps_limit: Maybe(u32) = nil,
+			 gl_debug_context := ODIN_DEBUG) -> (ok := false) {
 	s_context = context
 
 	queue.init(&s_event_queue)
@@ -694,9 +694,9 @@ Shader :: struct {
 }
 
 create_shader :: proc(vertex_source, fragment_source: string,
-		      tess_control_source := "",
-		      tess_evaluation_source := "",
-		      geometry_source := "") -> (shader: Shader, ok := false) {
+					  tess_control_source := "",
+					  tess_evaluation_source := "",
+					  geometry_source := "") -> (shader: Shader, ok := false) {
 	vertex_shader := create_sub_shader(vertex_source, gl.VERTEX_SHADER) or_return
 	defer gl.DeleteShader(vertex_shader)
 	fragment_shader := create_sub_shader(fragment_source, gl.FRAGMENT_SHADER) or_return
@@ -719,19 +719,19 @@ create_shader :: proc(vertex_source, fragment_source: string,
 	defer gl.DeleteShader(geometry_shader)
 
 	shader.id = link_shader_program(vertex_shader,
-					fragment_shader,
-					tess_control_shader,
-					tess_evaluation_shader,
-					geometry_shader) or_return
+									fragment_shader,
+									tess_control_shader,
+									tess_evaluation_shader,
+									geometry_shader) or_return
 
 	ok = true
 	return
 }
 
 create_shader_from_files :: proc(vertex_path, fragment_path: string,
-				 tess_control_path := "",
-				 tess_evaluation_path := "",
-				 geometry_path := "") -> (shader: Shader, ok := false) {
+								 tess_control_path := "",
+								 tess_evaluation_path := "",
+								 geometry_path := "") -> (shader: Shader, ok := false) {
 	read_shader_source :: proc(shader_type: string, path: string) -> (source: string, ok := false) {
 		file_data, error := os.read_entire_file(path, context.temp_allocator)
 		if error != nil {
@@ -749,15 +749,21 @@ create_shader_from_files :: proc(vertex_path, fragment_path: string,
 	tess_evaluation_source := ""
 	geometry_source := ""
 
-	if tess_control_path != "" do tess_control_source = read_shader_source("tess control", tess_control_path) or_return
-	if tess_evaluation_path != "" do tess_evaluation_source = read_shader_source("tess evaluation", tess_evaluation_path) or_return
-	if geometry_path != "" do geometry_source = read_shader_source("geometry", geometry_path) or_return
+	if tess_control_path != "" {
+		tess_control_source = read_shader_source("tess control", tess_control_path) or_return
+	}
+	if tess_evaluation_path != "" {
+		tess_evaluation_source = read_shader_source("tess evaluation", tess_evaluation_path) or_return
+	}
+	if geometry_path != "" {
+		geometry_source = read_shader_source("geometry", geometry_path) or_return
+	}
 
 	return create_shader(vertex_source = vertex_source,
-			     fragment_source = fragment_source,
-			     tess_control_source = tess_control_source,
-			     tess_evaluation_source = tess_evaluation_source,
-			     geometry_source = geometry_source)
+						 fragment_source = fragment_source,
+						 tess_control_source = tess_control_source,
+						 tess_evaluation_source = tess_evaluation_source,
+						 geometry_source = geometry_source)
 }
 
 destroy_shader :: proc(shader: Shader) {
@@ -811,10 +817,10 @@ create_sub_shader :: proc(shader_source: string, shader_type: u32) -> (shader: u
 
 @(private="file")
 link_shader_program :: proc(vertex_shader,
-			    fragment_shader,
-			    tess_control_shader,
-			    tess_evaluation_shader,
-			    geometry_shader: u32) -> (program: u32, ok := false) {
+							fragment_shader,
+							tess_control_shader,
+							tess_evaluation_shader,
+							geometry_shader: u32) -> (program: u32, ok := false) {
 	program = gl.CreateProgram()
 
 	gl.AttachShader(program, vertex_shader)
@@ -938,11 +944,11 @@ set_vertex_array_format :: proc(va: Vertex_Array, format: []Vertex_Attribute) {
 
 		gl.EnableVertexArrayAttrib(va.id, u32(index));
 		gl.VertexArrayAttribFormat(va.id,
-					   u32(index),
-					   description.count,
-					   description.type,
-					   gl.FALSE,
-					   offset)
+								   u32(index),
+								   description.count,
+								   description.type,
+								   gl.FALSE,
+								   offset)
 		gl.VertexArrayAttribBinding(va.id, u32(index), 0)
 
 		offset += description.size
@@ -951,15 +957,15 @@ set_vertex_array_format :: proc(va: Vertex_Array, format: []Vertex_Attribute) {
 
 bind_vertex_buffer :: proc(va: Vertex_Array, buffer: Gl_Buffer, stride: i32) {
 	gl.VertexArrayVertexBuffer(va.id,
-				   bindingindex = 0,
-				   buffer = buffer.id,
-				   offset = 0,
-				   stride = stride)
+							   bindingindex = 0,
+							   buffer = buffer.id,
+							   offset = 0,
+							   stride = stride)
 }
 
 bind_index_buffer :: proc(va: Vertex_Array, buffer: Gl_Buffer) {
 	gl.VertexArrayElementBuffer(va.id,
-				    buffer = buffer.id)
+								buffer = buffer.id)
 }
 
 // Buffers can be either static or dynamic.
@@ -1029,18 +1035,18 @@ reserve_dynamic_gl_buffer_size :: proc(buffer: ^Gl_Buffer, min_size: int, usage:
 	defer destroy_gl_buffer(&temp_buffer)
 
 	gl.CopyNamedBufferSubData(readBuffer = buffer.id,
-				  writeBuffer = temp_buffer.id,
-				  readOffset = 0,
-				  writeOffset = 0,
-				  size = buffer.size)
+							  writeBuffer = temp_buffer.id,
+							  readOffset = 0,
+							  writeOffset = 0,
+							  size = buffer.size)
 
 	gl.NamedBufferData(buffer.id, new_size, nil, usage)
 
 	gl.CopyNamedBufferSubData(readBuffer = temp_buffer.id,
-				  writeBuffer = buffer.id,
-				  readOffset = 0,
-				  writeOffset = 0,
-				  size = buffer.size)
+							  writeBuffer = buffer.id,
+							  readOffset = 0,
+							  writeOffset = 0,
+							  size = buffer.size)
 
 	buffer.size = new_size
 }
@@ -1076,9 +1082,9 @@ Texture :: struct {
 }
 
 create_texture :: proc(width, height: u32,
-		       channels: int,
-		       pixels: []byte,
-		       texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture) {
+					   channels: int,
+					   pixels: []byte,
+					   texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture) {
 	assert(slice.size(pixels) == int(width) * int(height) * channels * size_of(byte))
 	gl.CreateTextures(gl.TEXTURE_2D, 1, &texture.id)
 
@@ -1088,28 +1094,28 @@ create_texture :: proc(width, height: u32,
 	gl.TextureParameteri(texture.id, gl.TEXTURE_MAG_FILTER, texture_parameters.mag_filter)
 
 	gl.TextureStorage2D(texture.id,
-			    levels = 1,
-			    internalformat = texture_parameters.internal_format,
-			    width = i32(width),
-			    height = i32(height))
+						levels = 1,
+						internalformat = texture_parameters.internal_format,
+						width = i32(width),
+						height = i32(height))
 
 	gl.TextureSubImage2D(texture.id,
-			     level = 0,
-			     xoffset = 0,
-			     yoffset = 0,
-			     width = i32(width),
-			     height = i32(height),
-			     format = gl_texture_format_from_channels(channels),
-			     type = gl.UNSIGNED_BYTE,
-			     pixels = raw_data(pixels))
+						 level = 0,
+						 xoffset = 0,
+						 yoffset = 0,
+						 width = i32(width),
+						 height = i32(height),
+						 format = gl_texture_format_from_channels(channels),
+						 type = gl.UNSIGNED_BYTE,
+						 pixels = raw_data(pixels))
 
 	texture.width, texture.height = width, height
 	return
 }
 
 create_texture_from_png_in_memory :: proc(png_file_data: []byte,
-					  texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
-												ok := false) {
+										  texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
+																								ok := false) {
 	img, error := image.load(png_file_data, {}, context.temp_allocator)
 	if error != nil {
 		log.errorf("Failed to load image from png file in memory: %v", error)
@@ -1118,17 +1124,17 @@ create_texture_from_png_in_memory :: proc(png_file_data: []byte,
 	defer image.destroy(img, context.temp_allocator)
 
 	texture = create_texture(u32(img.width),
-				 u32(img.height),
-				 img.channels,
-				 bytes.buffer_to_bytes(&img.pixels),
-				 texture_parameters)
+							 u32(img.height),
+							 img.channels,
+							 bytes.buffer_to_bytes(&img.pixels),
+							 texture_parameters)
 	ok = true
 	return
 }
 
 create_texture_from_png_file :: proc(path: string,
-				     texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
-											   ok := false) {
+									 texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
+																						   ok := false) {
 	file_data, file_error := os.read_entire_file(path, context.temp_allocator)
 	if file_error != nil {
 		log.errorf("Failed to load image from png file `%v`: %v", path, file_error)
@@ -1139,8 +1145,8 @@ create_texture_from_png_file :: proc(path: string,
 }
 
 create_texture_from_jpeg_in_memory :: proc(jpeg_file_data: []byte,
-					   texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
-												 ok := false) {
+										   texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
+																								 ok := false) {
 	img, error := image.load(jpeg_file_data, {}, context.temp_allocator)
 	if error != nil {
 		log.errorf("Failed to load image from jpeg file in memory: %v", error)
@@ -1149,17 +1155,17 @@ create_texture_from_jpeg_in_memory :: proc(jpeg_file_data: []byte,
 	defer image.destroy(img, context.temp_allocator)
 
 	texture = create_texture(u32(img.width),
-				 u32(img.height),
-				 img.channels,
-				 bytes.buffer_to_bytes(&img.pixels),
-				 texture_parameters)
+							 u32(img.height),
+							 img.channels,
+							 bytes.buffer_to_bytes(&img.pixels),
+							 texture_parameters)
 	ok = true
 	return
 }
 
 create_texture_from_jpeg_file :: proc(path: string,
-				      texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
-											    ok := false) {
+									  texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
+																							ok := false) {
 	file_data, file_error := os.read_entire_file(path, context.temp_allocator)
 	if file_error != nil {
 		log.errorf("Failed to load image from jpeg file `%v`: %v", path, file_error)
@@ -1191,8 +1197,8 @@ gl_texture_format_from_channels :: proc(#any_int channels: int) -> u32 {
 	return gl.NONE
 }
 
-UP   :: Vec3{  0,  1,  0 }
-DOWN :: Vec3{  0, -1,  0 }
+UP   :: Vec3{ 0,  1, 0 }
+DOWN :: Vec3{ 0, -1, 0 }
 
 Camera :: struct {
 	position: Vec3,
@@ -1245,10 +1251,10 @@ Mesh :: struct {
 }
 
 create_mesh_from_vertices_and_indices :: proc(vertices: []byte,
-					      vertex_stride: u32,
-					      vertex_format: []Vertex_Attribute,
-					      indices: []byte, // indices can be nil.
-					      index_type: u32) -> (mesh: Mesh) {
+											  vertex_stride: u32,
+											  vertex_format: []Vertex_Attribute,
+											  indices: []byte, // indices can be nil.
+											  index_type: u32) -> (mesh: Mesh) {
 	vertex_data_offset := 0
 	index_data_offset := slice.size(vertices[:])
 	buffer_size := slice.size(vertices[:]) + slice.size(indices[:])
@@ -1277,23 +1283,23 @@ create_mesh_from_obj :: proc(path: cstring) -> (mesh: Mesh, ok := false) {
 
 create_mesh_from_mesh_data :: proc(mesh_data: ^$M/Mesh_Data) -> (mesh: Mesh) {
 	mesh = create_mesh_from_vertices_and_indices(vertices = slice.to_bytes(mesh_data.vertices[:]),
-						     vertex_stride = mesh_data.vertex_stride,
-						     vertex_format = mesh_data.vertex_format[:],
-						     indices = slice.to_bytes(mesh_data.indices[:]),
-						     index_type = mesh_data.index_type)
+												 vertex_stride = mesh_data.vertex_stride,
+												 vertex_format = mesh_data.vertex_format[:],
+												 indices = slice.to_bytes(mesh_data.indices[:]),
+												 index_type = mesh_data.index_type)
 	return
 }
 
 create_mesh :: proc{ create_mesh_from_vertices_and_indices, create_mesh_from_obj, create_mesh_from_mesh_data }
 
 load_mesh_from_obj :: proc(path: cstring,
-			   allocator := context.allocator) -> (mesh_data: Mesh_Data(Vertex_3D, u32), ok := false) {
+						   allocator := context.allocator) -> (mesh_data: Mesh_Data(Vertex_3D, u32), ok := false) {
 	file_reader :: proc "c" (ctx: rawptr,
-				 filename: cstring,
-				 is_mtl: c.int,
-				 obj_filename: cstring,
-				 buf: ^[^]c.char,
-				 buf_len: ^c.size_t) {
+							 filename: cstring,
+							 is_mtl: c.int,
+							 obj_filename: cstring,
+							 buf: ^[^]c.char,
+							 buf_len: ^c.size_t) {
 		context = s_context
 		data, error := os.read_entire_file(cast(string)obj_filename, context.temp_allocator)
 		if error != nil {
@@ -1314,14 +1320,14 @@ load_mesh_from_obj :: proc(path: cstring,
 	num_materials: uint
 
 	if tinyobj.parse_obj(attrib = &attrib,
-			     shapes = &shapes_data,
-			     num_shapes = &num_shapes,
-			     materials = &materials_data,
-			     num_materials = &num_materials,
-			     file_name = path,
-			     file_reader = file_reader,
-			     ctx = nil,
-			     flags = tinyobj.FLAG_TRIANGULATE) != tinyobj.SUCCESS {
+						 shapes = &shapes_data,
+						 num_shapes = &num_shapes,
+						 materials = &materials_data,
+						 num_materials = &num_materials,
+						 file_name = path,
+						 file_reader = file_reader,
+						 ctx = nil,
+						 flags = tinyobj.FLAG_TRIANGULATE) != tinyobj.SUCCESS {
 		return
 	}
 	defer {
