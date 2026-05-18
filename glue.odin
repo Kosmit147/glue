@@ -31,8 +31,7 @@ GL_VERSION_MAJOR :: 4
 GL_VERSION_MINOR :: 6
 IMGUI_FONT_SCALE :: 1.5
 
-@(private="file")
-s_context: runtime.Context
+_context: runtime.Context
 
 Window :: struct {
 	handle: glfw.WindowHandle,
@@ -43,11 +42,8 @@ Window :: struct {
 	prev_swap_buffers_time: f64,
 }
 
-@(private="file")
-s_window: Window
-
-@(private="file")
-s_event_queue: queue.Queue(Event)
+_window: Window
+_event_queue: queue.Queue(Event)
 
 Event :: union #no_nil {
 	Key_Pressed_Event,
@@ -62,12 +58,12 @@ init :: proc(width, height: i32,
 			 vsync := true,
 			 fps_limit: Maybe(u32) = nil,
 			 gl_debug_context := ODIN_DEBUG) -> (ok := false) {
-	s_context = context
+	_context = context
 
-	queue.init(&s_event_queue)
-	defer if !ok do queue.destroy(&s_event_queue)
+	queue.init(&_event_queue)
+	defer if !ok do queue.destroy(&_event_queue)
 
-	glfw.SetErrorCallback(glfw_error_callback)
+	glfw.SetErrorCallback(_glfw_error_callback)
 
 	if !glfw.Init() do return
 	defer if !ok do glfw.Terminate()
@@ -78,20 +74,20 @@ init :: proc(width, height: i32,
 	glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, c.int(gl_debug_context))
 	glfw.WindowHint(glfw.MAXIMIZED, glfw.TRUE if maximized else glfw.FALSE)
 
-	s_window.handle = glfw.CreateWindow(width, height, title, nil, nil)
-	if s_window.handle == nil do return
-	defer if !ok do glfw.DestroyWindow(s_window.handle)
+	_window.handle = glfw.CreateWindow(width, height, title, nil, nil)
+	if _window.handle == nil do return
+	defer if !ok do glfw.DestroyWindow(_window.handle)
 
-	glfw.MakeContextCurrent(s_window.handle)
+	glfw.MakeContextCurrent(_window.handle)
 	glfw.SwapInterval(1 if vsync else 0)
 
 	if limit, limit_set := fps_limit.?; limit_set do enable_fps_limit(limit)
 	else do disable_fps_limit()
 
-	glfw.SetFramebufferSizeCallback(s_window.handle, glfw_framebuffer_size_callback)
-	glfw.SetKeyCallback(s_window.handle, glfw_key_callback)
-	glfw.SetMouseButtonCallback(s_window.handle, glfw_mouse_button_callback)
-	glfw.SetCursorPosCallback(s_window.handle, glfw_cursor_position_callback)
+	glfw.SetFramebufferSizeCallback(_window.handle, _glfw_framebuffer_size_callback)
+	glfw.SetKeyCallback(_window.handle, _glfw_key_callback)
+	glfw.SetMouseButtonCallback(_window.handle, _glfw_mouse_button_callback)
+	glfw.SetCursorPosCallback(_window.handle, _glfw_cursor_position_callback)
 
 	gl.load_up_to(GL_VERSION_MAJOR, GL_VERSION_MINOR, glfw.gl_set_proc_address)
 
@@ -105,100 +101,98 @@ init :: proc(width, height: i32,
 	log.infof("Renderer: %v", gl.GetString(gl.RENDERER))
 	log.infof("Version: %v", gl.GetString(gl.VERSION))
 
-	gl.Viewport(0, 0, glfw.GetFramebufferSize(s_window.handle))
+	gl.Viewport(0, 0, glfw.GetFramebufferSize(_window.handle))
 
-	init_input()
+	_init_input()
 
-	init_imgui()
-	defer if !ok do deinit_imgui()
+	_init_imgui()
+	defer if !ok do _deinit_imgui()
 
 	ok = true
 	return
 }
 
 deinit :: proc() {
-	deinit_imgui()
-	glfw.DestroyWindow(s_window.handle)
+	_deinit_imgui()
+	glfw.DestroyWindow(_window.handle)
 	glfw.Terminate()
-	s_window.handle = nil
-	queue.destroy(&s_event_queue)
+	_window.handle = nil
+	queue.destroy(&_event_queue)
 }
 
 window_handle :: proc() -> glfw.WindowHandle {
-	return s_window.handle
+	return _window.handle
 }
 
 window_should_close :: proc() -> bool {
-	return cast(bool)glfw.WindowShouldClose(s_window.handle)
+	return cast(bool)glfw.WindowShouldClose(_window.handle)
 }
 
 close_window :: proc() {
-	glfw.SetWindowShouldClose(s_window.handle, glfw.TRUE)
+	glfw.SetWindowShouldClose(_window.handle, glfw.TRUE)
 }
 
 begin_frame :: proc() {
-	input_new_frame()
+	_input_new_frame()
 	glfw.PollEvents()
-	imgui_new_frame()
+	_imgui_new_frame()
 }
 
 end_frame :: proc() {
-	imgui_render()
-	swap_buffers()
+	_imgui_render()
+	_swap_buffers()
 }
 
-@(private="file")
-swap_buffers :: proc() {
-	glfw.SwapBuffers(s_window.handle)
-	current_frame_time := time() - s_window.prev_swap_buffers_time
-	if current_frame_time < s_window.target_frame_time {
-		sleep_time := s_window.target_frame_time - current_frame_time
+_swap_buffers :: proc() {
+	glfw.SwapBuffers(_window.handle)
+	current_frame_time := time() - _window.prev_swap_buffers_time
+	if current_frame_time < _window.target_frame_time {
+		sleep_time := _window.target_frame_time - current_frame_time
 		core_time.accurate_sleep(core_time.Duration(sleep_time * f64(core_time.Second)))
 	}
-	s_window.prev_swap_buffers_time = time()
+	_window.prev_swap_buffers_time = time()
 }
 
 pop_event :: proc() -> (Event, bool) {
-	return queue.pop_front_safe(&s_event_queue)
+	return queue.pop_front_safe(&_event_queue)
 }
 
-@(private="file")
-push_event :: proc(event: Event) {
-	queue.push_back(&s_event_queue, event)
+_push_event :: proc(event: Event) {
+	queue.push_back(&_event_queue, event)
 }
 
 MIN_FPS_LIMIT :: 1
 
 enable_fps_limit :: proc(limit: u32) {
 	limit := max(limit, MIN_FPS_LIMIT)
-	s_window.fps_limit = limit
-	s_window.target_frame_time = 1.0 / f64(limit)
+	_window.fps_limit = limit
+	_window.target_frame_time = 1.0 / f64(limit)
 }
 
 disable_fps_limit :: proc() {
-	s_window.fps_limit = nil
-	s_window.target_frame_time = 0
+	_window.fps_limit = nil
+	_window.target_frame_time = 0
 }
 
 @(require_results)
 fps_limit :: proc() -> (u32, bool) {
-	return s_window.fps_limit.?
+	return _window.fps_limit.?
 }
 
 @(require_results)
 target_frame_time :: proc() -> f64 {
-	return s_window.target_frame_time
+	return _window.target_frame_time
 }
 
 @(require_results)
 window_size :: proc() -> [2]i32 {
-	x, y := glfw.GetWindowSize(s_window.handle)
+	x, y := glfw.GetWindowSize(_window.handle)
 	return { x, y }
 }
 
 @(require_results)
 framebuffer_size :: proc() -> [2]i32 {
-	x, y := glfw.GetFramebufferSize(s_window.handle)
+	x, y := glfw.GetFramebufferSize(_window.handle)
 	return { x, y }
 }
 
@@ -215,34 +209,34 @@ time :: proc() -> f64 {
 
 @(require_results)
 cursor_enabled :: proc() -> bool {
-	return s_window.cursor_enabled
+	return _window.cursor_enabled
 }
 
 set_cursor_enabled :: proc(enabled: bool) {
-	glfw.SetInputMode(s_window.handle, glfw.CURSOR, glfw.CURSOR_NORMAL if enabled else glfw.CURSOR_DISABLED)
-	s_window.cursor_enabled = enabled
-	input_update_cursor_pos()
+	glfw.SetInputMode(_window.handle, glfw.CURSOR, glfw.CURSOR_NORMAL if enabled else glfw.CURSOR_DISABLED)
+	_window.cursor_enabled = enabled
+	_input_update_cursor_pos()
 }
 
 @(require_results)
 raw_mouse_motion_enabled :: proc() -> bool {
-	return s_window.raw_mouse_motion_enabled
+	return _window.raw_mouse_motion_enabled
 }
 
 set_raw_mouse_motion_enabled :: proc(enabled: bool) {
 	if !glfw.RawMouseMotionSupported() do return
-	glfw.SetInputMode(s_window.handle, glfw.RAW_MOUSE_MOTION, glfw.TRUE if enabled else glfw.FALSE)
-	s_window.raw_mouse_motion_enabled = enabled
+	glfw.SetInputMode(_window.handle, glfw.RAW_MOUSE_MOTION, glfw.TRUE if enabled else glfw.FALSE)
+	_window.raw_mouse_motion_enabled = enabled
 }
 
-@(private="file")
-glfw_error_callback :: proc "c" (error: i32, description: cstring) {
-	context = s_context
+@(private)
+_glfw_error_callback :: proc "c" (error: i32, description: cstring) {
+	context = _context
 	log.errorf("GLFW Error %v: %v", error, description)
 }
 
-@(private="file")
-glfw_framebuffer_size_callback :: proc "c" (window_handle: glfw.WindowHandle, width, height: i32) {
+@(private)
+_glfw_framebuffer_size_callback :: proc "c" (window_handle: glfw.WindowHandle, width, height: i32) {
 	gl.Viewport(0, 0, width, height)
 }
 
@@ -378,8 +372,7 @@ Key :: enum u8 {
 	Menu,
 }
 
-@(private="file")
-map_glfw_key :: proc "contextless" (glfw_key: i32) -> Key {
+_map_glfw_key :: proc "contextless" (glfw_key: i32) -> Key {
 	switch glfw_key {
 	case glfw.KEY_SPACE:          return .Space
 	case glfw.KEY_APOSTROPHE:     return .Apostrophe
@@ -529,8 +522,7 @@ Mouse_Button :: enum u8 {
 	Middle = Button_3,
 }
 
-@(private="file")
-map_glfw_mouse_button :: proc "contextless" (glfw_mouse_button: i32) -> Mouse_Button {
+_map_glfw_mouse_button :: proc "contextless" (glfw_mouse_button: i32) -> Mouse_Button {
 	switch glfw_mouse_button {
  	case glfw.MOUSE_BUTTON_1:  return .Button_1
  	case glfw.MOUSE_BUTTON_2:  return .Button_2
@@ -551,44 +543,40 @@ Input :: struct {
 	cursor_position_delta: [2]f64,
 }
 
-@(private="file")
-s_input: Input
+_input: Input
 
-@(private="file")
-init_input :: proc() {
-	x, y := glfw.GetCursorPos(s_window.handle)
-	s_input.cursor_position = { x, y }
+_init_input :: proc() {
+	x, y := glfw.GetCursorPos(_window.handle)
+	_input.cursor_position = { x, y }
 }
 
-@(private="file")
-input_new_frame :: proc() {
-	s_input.cursor_position_delta = 0
+_input_new_frame :: proc() {
+	_input.cursor_position_delta = 0
 }
 
-@(private="file")
-input_update_cursor_pos :: proc() {
-	pos_x, pos_y := glfw.GetCursorPos(s_window.handle)
-	s_input.cursor_position = { pos_x, pos_y }
+_input_update_cursor_pos :: proc() {
+	pos_x, pos_y := glfw.GetCursorPos(_window.handle)
+	_input.cursor_position = { pos_x, pos_y }
 }
 
 @(require_results)
 key_pressed :: proc(key: Key) -> bool {
-	return key in s_input.pressed_keys
+	return key in _input.pressed_keys
 }
 
 @(require_results)
 mouse_button_pressed :: proc(button: Mouse_Button) -> bool {
-	return button in s_input.pressed_mouse_buttons
+	return button in _input.pressed_mouse_buttons
 }
 
 @(require_results)
 cursor_position :: proc() -> [2]f64 {
-	return s_input.cursor_position
+	return _input.cursor_position
 }
 
 @(require_results)
 cursor_position_delta :: proc() -> [2]f64 {
-	return s_input.cursor_position_delta
+	return _input.cursor_position_delta
 }
 
 Key_Pressed_Event :: struct {
@@ -599,16 +587,16 @@ Key_Released_Event :: struct {
 	key: Key,
 }
 
-@(private="file")
-glfw_key_callback :: proc "c" (window_handle: glfw.WindowHandle, key, scancode, action, mods: i32) {
-	context = s_context
-	key := map_glfw_key(key)
+@(private)
+_glfw_key_callback :: proc "c" (window_handle: glfw.WindowHandle, key, scancode, action, mods: i32) {
+	context = _context
+	key := _map_glfw_key(key)
 	if action == glfw.PRESS {
-		s_input.pressed_keys += { key }
-		push_event(Key_Pressed_Event{ key })
+		_input.pressed_keys += { key }
+		_push_event(Key_Pressed_Event{ key })
 	} else if action == glfw.RELEASE {
-		s_input.pressed_keys -= { key }
-		push_event(Key_Released_Event{ key })
+		_input.pressed_keys -= { key }
+		_push_event(Key_Released_Event{ key })
 	}
 }
 
@@ -620,28 +608,27 @@ Mouse_Button_Released_Event :: struct {
 	button: Mouse_Button,
 }
 
-@(private="file")
-glfw_mouse_button_callback :: proc "c" (window_handle: glfw.WindowHandle, button, action, mods: i32) {
-	context = s_context
-	button := map_glfw_mouse_button(button)
+@(private)
+_glfw_mouse_button_callback :: proc "c" (window_handle: glfw.WindowHandle, button, action, mods: i32) {
+	context = _context
+	button := _map_glfw_mouse_button(button)
 	if action == glfw.PRESS {
-		s_input.pressed_mouse_buttons += { button }
-		push_event(Mouse_Button_Pressed_Event{ button })
+		_input.pressed_mouse_buttons += { button }
+		_push_event(Mouse_Button_Pressed_Event{ button })
 	} else if action == glfw.RELEASE {
-		s_input.pressed_mouse_buttons -= { button }
-		push_event(Mouse_Button_Released_Event{ button })
+		_input.pressed_mouse_buttons -= { button }
+		_push_event(Mouse_Button_Released_Event{ button })
 	}
 }
 
-@(private="file")
-glfw_cursor_position_callback :: proc "c" (window_handle: glfw.WindowHandle, xpos, ypos: f64) {
+@(private)
+_glfw_cursor_position_callback :: proc "c" (window_handle: glfw.WindowHandle, xpos, ypos: f64) {
 	position := [2]f64{ xpos, ypos }
-	s_input.cursor_position_delta += (position - s_input.cursor_position)
-	s_input.cursor_position = position
+	_input.cursor_position_delta += (position - _input.cursor_position)
+	_input.cursor_position = position
 }
 
-@(private="file")
-init_imgui :: proc() {
+_init_imgui :: proc() {
 	imgui.CHECKVERSION()
 	imgui.CreateContext()
 
@@ -649,31 +636,28 @@ init_imgui :: proc() {
 	io.ConfigFlags += { .DockingEnable, .ViewportsEnable }
 	io.FontGlobalScale = IMGUI_FONT_SCALE
 
-	imgui_impl_glfw.InitForOpenGL(s_window.handle, install_callbacks = true)
+	imgui_impl_glfw.InitForOpenGL(_window.handle, install_callbacks = true)
 	imgui_impl_opengl3.Init("#version 430 core")
 }
 
-@(private="file")
-deinit_imgui :: proc() {
+_deinit_imgui :: proc() {
 	imgui_impl_opengl3.Shutdown()
 	imgui_impl_glfw.Shutdown()
 	imgui.DestroyContext()
 }
 
-@(private="file")
-imgui_new_frame :: proc() {
+_imgui_new_frame :: proc() {
 	imgui_impl_opengl3.NewFrame()
 	imgui_impl_glfw.NewFrame()
 	imgui.NewFrame()
 }
 
-@(private="file")
-imgui_render :: proc() {
+_imgui_render :: proc() {
 	imgui.Render()
 	imgui_impl_opengl3.RenderDrawData(imgui.GetDrawData())
 	imgui.UpdatePlatformWindows()
 	imgui.RenderPlatformWindowsDefault()
-	glfw.MakeContextCurrent(s_window.handle)
+	glfw.MakeContextCurrent(_window.handle)
 }
 
 @(require_results)
@@ -774,7 +758,6 @@ use_shader :: proc(shader: Shader) {
 	gl.UseProgram(shader.id)
 }
 
-@(private="file")
 create_sub_shader :: proc(shader_source: string, shader_type: u32) -> (shader: u32, ok := false) {
 	shader_type_string :: proc(type: u32) -> string {
 		switch type {
@@ -815,7 +798,6 @@ create_sub_shader :: proc(shader_source: string, shader_type: u32) -> (shader: u
 	return
 }
 
-@(private="file")
 link_shader_program :: proc(vertex_shader,
 							fragment_shader,
 							tess_control_shader,
@@ -919,7 +901,6 @@ Vertex_Attribute_Description :: struct {
 	size: u32,
 }
 
-@(private="file")
 describe_vertex_attribute :: proc(attribute: Vertex_Attribute) -> Vertex_Attribute_Description {
 	switch attribute {
 	case .Float_1:
@@ -1184,7 +1165,6 @@ bind_texture :: proc(texture: Texture, slot: u32) {
 	gl.BindTextureUnit(slot, texture.id)
 }
 
-@(private="file")
 gl_texture_format_from_channels :: proc(#any_int channels: int) -> u32 {
 	switch channels {
 	case 1: return gl.RED
@@ -1300,7 +1280,7 @@ load_mesh_from_obj :: proc(path: cstring,
 							 obj_filename: cstring,
 							 buf: ^[^]c.char,
 							 buf_len: ^c.size_t) {
-		context = s_context
+		context = _context
 		data, error := os.read_entire_file(cast(string)obj_filename, context.temp_allocator)
 		if error != nil {
 			log.errorf("Failed to read obj file `%v`: %v", obj_filename, error)
