@@ -229,6 +229,24 @@ set_raw_mouse_motion_enabled :: proc(enabled: bool) {
 	_window.raw_mouse_motion_enabled = enabled
 }
 
+@(require_results)
+full_screen_enabled :: proc() -> bool {
+	return glfw.GetWindowMonitor(_window.handle) != nil
+}
+
+set_full_screen_enabled :: proc(full_screen: bool) {
+	if full_screen_enabled() == full_screen do return
+	monitor := glfw.GetPrimaryMonitor()
+	video_mode := glfw.GetVideoMode(monitor)
+	glfw.SetWindowMonitor(window = _window.handle,
+						  monitor = monitor if full_screen else nil,
+						  xpos = 0,
+						  ypos = 0,
+						  width = video_mode.width,
+						  height = video_mode.height,
+						  refresh_rate = video_mode.refresh_rate)
+}
+
 @(private)
 _glfw_error_callback :: proc "c" (error: i32, description: cstring) {
 	context = _context
