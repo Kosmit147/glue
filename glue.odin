@@ -1058,6 +1058,10 @@ bind_uniform_buffer :: proc(buffer: Gl_Buffer, binding_point: u32) {
 	gl.BindBufferBase(gl.UNIFORM_BUFFER, binding_point, buffer.id)
 }
 
+bind_shader_storage_buffer :: proc(buffer: Gl_Buffer, binding_point: u32) {
+	gl.BindBufferBase(gl.SHADER_STORAGE_BUFFER, binding_point, buffer.id)
+}
+
 Texture_Parameters :: struct {
 	wrap_s: i32,
 	wrap_t: i32,
