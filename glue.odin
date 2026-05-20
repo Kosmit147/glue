@@ -1261,7 +1261,7 @@ create_mesh_from_vertices_and_indices :: proc(vertices: []byte,
 	upload_static_gl_buffer_data(mesh.buffer, vertices, vertex_data_offset)
 	upload_static_gl_buffer_data(mesh.buffer, indices, index_data_offset)
 
-	mesh.vertex_count = cast(u32)len(indices) if indices != nil else u32(slice.size(vertices[:])) / vertex_stride
+	mesh.vertex_count = cast(u32)len(indices) if indices != nil else u32(slice.size(vertices[:])) / max(vertex_stride, 1)
 	mesh.index_type = index_type
 	mesh.index_data_offset = cast(u32)index_data_offset
 
