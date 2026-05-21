@@ -56,6 +56,7 @@ init :: proc(width, height: i32,
 			 title: cstring,
 			 maximized := false,
 			 vsync := true,
+			 resizable := true,
 			 fps_limit: Maybe(u32) = nil,
 			 gl_debug_context := ODIN_DEBUG) -> (ok := false) {
 	_context = context
@@ -71,8 +72,9 @@ init :: proc(width, height: i32,
 	glfw.WindowHint(glfw.CONTEXT_VERSION_MAJOR, GL_VERSION_MAJOR)
 	glfw.WindowHint(glfw.CONTEXT_VERSION_MINOR, GL_VERSION_MINOR)
 	glfw.WindowHint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-	glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, c.int(gl_debug_context))
+	glfw.WindowHint(glfw.OPENGL_DEBUG_CONTEXT, glfw.TRUE if gl_debug_context else glfw.FALSE)
 	glfw.WindowHint(glfw.MAXIMIZED, glfw.TRUE if maximized else glfw.FALSE)
+	glfw.WindowHint(glfw.RESIZABLE, glfw.TRUE if resizable else glfw.FALSE)
 
 	_window.handle = glfw.CreateWindow(width, height, title, nil, nil)
 	if _window.handle == nil do return
