@@ -693,6 +693,62 @@ gl_index :: proc($I: typeid) -> u32 {
 	}
 }
 
+Framebuffer :: struct {
+	id: u32,
+}
+
+DEFAULT_FRAMEBUFFER :: 0
+
+create_framebuffer :: proc(framebuffer: ^Framebuffer) {
+	gl.CreateFramebuffers(1, &framebuffer.id)
+}
+
+destroy_framebuffer :: proc(framebuffer: ^Framebuffer) {
+	gl.DeleteFramebuffers(1, &framebuffer.id)
+}
+
+framebuffer_is_complete :: proc(framebuffer: Framebuffer) -> bool {
+	return gl.CheckNamedFramebufferStatus(framebuffer.id, gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE
+}
+
+bind_framebuffer :: proc(framebuffer: Framebuffer) {
+	gl.BindFramebuffer(gl.FRAMEBUFFER, framebuffer.id)
+}
+
+bind_default_framebuffer :: proc() {
+	gl.BindFramebuffer(gl.FRAMEBUFFER, DEFAULT_FRAMEBUFFER)
+}
+
+attach_renderbuffer :: proc(framebuffer: Framebuffer, renderbuffer: Renderbuffer, attachment: u32) {
+	gl.NamedFramebufferRenderbuffer(framebuffer = framebuffer.id,
+									attachment = attachment,
+									renderbuffertarget = gl.RENDERBUFFER,
+									renderbuffer = renderbuffer.id)
+}
+
+attach_texture :: proc(framebuffer: Framebuffer, texture: Texture, attachment: u32) {
+	gl.NamedFramebufferTexture(framebuffer = framebuffer.id,
+							   attachment = attachment,
+							   texture = texture.id,
+							   level = 0)
+}
+
+Renderbuffer :: struct {
+	id: u32,
+	width: i32,
+	height: i32,
+}
+
+create_renderbuffer :: proc(renderbuffer: ^Renderbuffer, width, height: i32, format: u32) {
+	gl.CreateRenderbuffers(1, &renderbuffer.id)
+	gl.NamedRenderbufferStorage(renderbuffer.id, format, width, height)
+	renderbuffer.width, renderbuffer.height = width, height
+}
+
+destroy_renderbuffer :: proc(renderbuffer: ^Renderbuffer) {
+	gl.DeleteRenderbuffers(1, &renderbuffer.id)
+}
+
 Shader :: struct {
 	id: u32,
 }
@@ -1069,7 +1125,6 @@ Texture_Parameters :: struct {
 	wrap_t: i32,
 	min_filter: i32,
 	mag_filter: i32,
-	internal_format: u32,
 }
 
 DEFAULT_TEXTURE_PARAMETERS :: Texture_Parameters {
@@ -1077,7 +1132,13 @@ DEFAULT_TEXTURE_PARAMETERS :: Texture_Parameters {
 	wrap_t = gl.REPEAT,
 	min_filter = gl.LINEAR_MIPMAP_LINEAR,
 	mag_filter = gl.LINEAR,
-	internal_format = gl.RGBA8,
+}
+
+set_texture_parameters :: proc(texture: Texture, texture_parameters: Texture_Parameters) {
+	gl.TextureParameteri(texture.id, gl.TEXTURE_WRAP_S, texture_parameters.wrap_s)
+	gl.TextureParameteri(texture.id, gl.TEXTURE_WRAP_T, texture_parameters.wrap_t)
+	gl.TextureParameteri(texture.id, gl.TEXTURE_MIN_FILTER, texture_parameters.min_filter)
+	gl.TextureParameteri(texture.id, gl.TEXTURE_MAG_FILTER, texture_parameters.mag_filter)
 }
 
 Texture :: struct {
@@ -1087,23 +1148,26 @@ Texture :: struct {
 }
 
 create_texture :: proc(width, height: u32,
-					   channels: int,
-					   pixels: []byte,
+					   internal_format: u32 = gl.RGBA8,
 					   texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture) {
-	assert(slice.size(pixels) == int(width) * int(height) * channels * size_of(byte))
 	gl.CreateTextures(gl.TEXTURE_2D, 1, &texture.id)
-
-	gl.TextureParameteri(texture.id, gl.TEXTURE_WRAP_S, texture_parameters.wrap_s)
-	gl.TextureParameteri(texture.id, gl.TEXTURE_WRAP_T, texture_parameters.wrap_t)
-	gl.TextureParameteri(texture.id, gl.TEXTURE_MIN_FILTER, texture_parameters.min_filter)
-	gl.TextureParameteri(texture.id, gl.TEXTURE_MAG_FILTER, texture_parameters.mag_filter)
-
+	set_texture_parameters(texture, texture_parameters)
 	gl.TextureStorage2D(texture.id,
 						levels = 1,
-						internalformat = texture_parameters.internal_format,
+						internalformat = internal_format,
 						width = i32(width),
 						height = i32(height))
+	texture.width, texture.height = width, height
+	return
+}
 
+create_texture_from_pixels :: proc(width, height: u32,
+								   channels: int,
+								   pixels: []byte,
+								   internal_format: u32 = gl.RGBA8,
+								   texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture) {
+	assert(slice.size(pixels) == int(width) * int(height) * channels * size_of(byte))
+	texture = create_texture(width, height, internal_format, texture_parameters)
 	gl.TextureSubImage2D(texture.id,
 						 level = 0,
 						 xoffset = 0,
@@ -1113,12 +1177,11 @@ create_texture :: proc(width, height: u32,
 						 format = gl_texture_format_from_channels(channels),
 						 type = gl.UNSIGNED_BYTE,
 						 pixels = raw_data(pixels))
-
-	texture.width, texture.height = width, height
 	return
 }
 
 create_texture_from_png_in_memory :: proc(png_file_data: []byte,
+										  internal_format: u32 = gl.RGBA8,
 										  texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
 																								ok := false) {
 	img, error := image.load(png_file_data, {}, context.temp_allocator)
@@ -1128,16 +1191,18 @@ create_texture_from_png_in_memory :: proc(png_file_data: []byte,
 	}
 	defer image.destroy(img, context.temp_allocator)
 
-	texture = create_texture(u32(img.width),
-							 u32(img.height),
-							 img.channels,
-							 bytes.buffer_to_bytes(&img.pixels),
-							 texture_parameters)
+	texture = create_texture_from_pixels(u32(img.width),
+										 u32(img.height),
+										 img.channels,
+										 bytes.buffer_to_bytes(&img.pixels),
+										 internal_format,
+										 texture_parameters)
 	ok = true
 	return
 }
 
 create_texture_from_png_file :: proc(path: string,
+									 internal_format: u32 = gl.RGBA8,
 									 texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
 																						   ok := false) {
 	file_data, file_error := os.read_entire_file(path, context.temp_allocator)
@@ -1146,10 +1211,11 @@ create_texture_from_png_file :: proc(path: string,
 		return
 	}
 	assert(strings.to_lower(filepath.ext(path), context.temp_allocator) == ".png", "expected a png file")
-	return create_texture_from_png_in_memory(file_data, texture_parameters)
+	return create_texture_from_png_in_memory(file_data, internal_format, texture_parameters)
 }
 
 create_texture_from_jpeg_in_memory :: proc(jpeg_file_data: []byte,
+										   internal_format: u32 = gl.RGBA8,
 										   texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
 																								 ok := false) {
 	img, error := image.load(jpeg_file_data, {}, context.temp_allocator)
@@ -1159,16 +1225,18 @@ create_texture_from_jpeg_in_memory :: proc(jpeg_file_data: []byte,
 	}
 	defer image.destroy(img, context.temp_allocator)
 
-	texture = create_texture(u32(img.width),
-							 u32(img.height),
-							 img.channels,
-							 bytes.buffer_to_bytes(&img.pixels),
-							 texture_parameters)
+	texture = create_texture_from_pixels(u32(img.width),
+										 u32(img.height),
+										 img.channels,
+										 bytes.buffer_to_bytes(&img.pixels),
+										 internal_format,
+										 texture_parameters)
 	ok = true
 	return
 }
 
 create_texture_from_jpeg_file :: proc(path: string,
+									  internal_format: u32 = gl.RGBA8,
 									  texture_parameters := DEFAULT_TEXTURE_PARAMETERS) -> (texture: Texture,
 																							ok := false) {
 	file_data, file_error := os.read_entire_file(path, context.temp_allocator)
@@ -1178,7 +1246,7 @@ create_texture_from_jpeg_file :: proc(path: string,
 	}
 	extension := strings.to_lower(filepath.ext(path), context.temp_allocator)
 	assert(extension == ".jpg" || extension == ".jpeg", "expected a jpeg file")
-	return create_texture_from_jpeg_in_memory(file_data, texture_parameters)
+	return create_texture_from_jpeg_in_memory(file_data, internal_format, texture_parameters)
 }
 
 destroy_texture :: proc(texture: ^Texture) {
