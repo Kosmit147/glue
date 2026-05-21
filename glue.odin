@@ -1127,6 +1127,7 @@ Texture_Parameters :: struct {
 	wrap_t: i32,
 	min_filter: i32,
 	mag_filter: i32,
+	border_color: Vec4,
 }
 
 DEFAULT_TEXTURE_PARAMETERS :: Texture_Parameters {
@@ -1134,6 +1135,7 @@ DEFAULT_TEXTURE_PARAMETERS :: Texture_Parameters {
 	wrap_t = gl.REPEAT,
 	min_filter = gl.LINEAR_MIPMAP_LINEAR,
 	mag_filter = gl.LINEAR,
+	border_color = BLACK,
 }
 
 set_texture_parameters :: proc(texture: Texture, texture_parameters: Texture_Parameters) {
@@ -1141,6 +1143,8 @@ set_texture_parameters :: proc(texture: Texture, texture_parameters: Texture_Par
 	gl.TextureParameteri(texture.id, gl.TEXTURE_WRAP_T, texture_parameters.wrap_t)
 	gl.TextureParameteri(texture.id, gl.TEXTURE_MIN_FILTER, texture_parameters.min_filter)
 	gl.TextureParameteri(texture.id, gl.TEXTURE_MAG_FILTER, texture_parameters.mag_filter)
+	border_color := texture_parameters.border_color
+	gl.TextureParameterfv(texture.id, gl.TEXTURE_BORDER_COLOR, raw_data(&border_color))
 }
 
 Texture :: struct {
@@ -1481,7 +1485,7 @@ Vertex_3D :: struct {
 
 WHITE       :: Vec4{ 1, 1, 1, 1 }
 BLACK       :: Vec4{ 0, 0, 0, 1 }
-TRANSPARENT :: Vec4{ 0, 0, 0, 0 }
+TRANSPARENT :: Vec4{ 1, 1, 1, 0 }
 
 RED         :: Vec4{ 1, 0, 0, 1 }
 GREEN       :: Vec4{ 0, 1, 0, 1 }
